@@ -21,9 +21,9 @@ class Settings(BaseSettings):
     supabase_backend_key: str = "vf_backend_9f8e7d6c5b4a3f2e1d0c"
     supabase_bucket: str = "capturas-porton"
 
-    # Google Gemini 2.5 Flash (Juez de Última Instancia + Chat Visual PWA)
+    # Google Gemini Flash (Juez de Última Instancia + Chat Visual PWA)
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.8-flash"
 
     # Notificaciones Web Push (VAPID)
     vapid_public_key: str = ""

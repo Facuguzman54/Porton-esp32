@@ -20,7 +20,13 @@ class GeminiService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.api_key = settings.gemini_api_key.strip()
-        self.model = settings.gemini_model.strip() or "gemini-2.5-flash"
+        configured = settings.gemini_model.strip()
+        # En generativelanguage.googleapis.com, models/gemini-2.5-flash fue reemplazado por models/gemini-3.8-flash
+        # para proyectos nuevos; mapeamos automáticamente a gemini-3.8-flash para evitar 404.
+        if not configured or configured in ("gemini-2.5-flash", "gemini-2.0-flash"):
+            self.model = "gemini-3.8-flash"
+        else:
+            self.model = configured
         self.ultimo_error: str | None = None
 
     async def _invocar_gemini(
@@ -39,8 +45,8 @@ class GeminiService:
         if jpeg_bytes:
             parts.append(
                 {
-                    "inlineData": {
-                        "mimeType": "image/jpeg",
+                    "inline_data": {
+                        "mime_type": "image/jpeg",
                         "data": base64.b64encode(jpeg_bytes).decode("ascii"),
                     }
                 }
@@ -55,7 +61,8 @@ class GeminiService:
 
         generation_config: dict[str, Any] = {
             "temperature": 0.2,
-            "maxOutputTokens": 1024,
+            "maxOutputTokens": 512,
+            "thinkingConfig": {"thinkingBudget": 0},
         }
         if json_mode:
             generation_config["responseMimeType"] = "application/json"
@@ -65,66 +72,81 @@ class GeminiService:
             "generationConfig": generation_config,
         }
 
-        modelos_a_probar = [self.model]
-        if "gemini-2.0-flash" not in modelos_a_probar:
-            modelos_a_probar.append("gemini-2.0-flash")
+        modelos_a_probar: list[str] = []
+        for candidato in (self.model, "gemini-3.8-flash", "gemini-2.5-flash"):
+            if candidato and candidato not in modelos_a_probar:
+                modelos_a_probar.append(candidato)
 
-        # Las claves que comienzan con "AQ." pertenecen a Vertex AI Express Mode (aiplatform.googleapis.com),
-        # mientras que las que comienzan con "AIza" pertenecen a Google AI Studio (generativelanguage.googleapis.com).
-        es_vertex_key = self.api_key.startswith("AQ.")
-        base_url = (
-            "https://aiplatform.googleapis.com/v1/publishers/google/models"
-            if es_vertex_key
-            else "https://generativelanguage.googleapis.com/v1beta/models"
-        )
+        # La clave "AQ..." funciona directamente en generativelanguage.googleapis.com con gemini-3.8-flash;
+        # dejamos aiplatform.googleapis.com únicamente como respaldo secundario.
+        base_urls = [
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            "https://aiplatform.googleapis.com/v1/publishers/google/models",
+        ]
 
-        async with httpx.AsyncClient(timeout=12.0) as client:
-            for modelo in modelos_a_probar:
-                url = f"{base_url}/{modelo}:generateContent"
-                try:
-                    resp = await client.post(
-                        url,
-                        params={"key": self.api_key},
-                        json=payload,
-                    )
-                    if resp.status_code >= 400:
-                        body_preview = resp.text[:400]
-                        logger.warning(
-                            "Gemini (%s en %s) devolvió HTTP %d: %s",
-                            modelo,
-                            base_url.split("/")[2],
-                            resp.status_code,
-                            body_preview,
+        async with httpx.AsyncClient(timeout=18.0) as client:
+            for base_url in base_urls:
+                for modelo in modelos_a_probar:
+                    url = f"{base_url}/{modelo}:generateContent"
+                    try:
+                        resp = await client.post(
+                            url,
+                            params={"key": self.api_key},
+                            json=payload,
                         )
-                        if "SERVICE_DISABLED" in body_preview or "aiplatform.googleapis.com" in body_preview and resp.status_code == 403:
-                            self.ultimo_error = (
-                                "La API de Vertex AI (aiplatform.googleapis.com) está deshabilitada en el proyecto "
-                                "de Google Cloud asociado a tu GEMINI_API_KEY (AQ...), o podés usar una clave 'AIza...' de Google AI Studio."
+                        if resp.status_code == 400 and "thinkingConfig" in resp.text:
+                            gen_cfg_fallback = {
+                                k: v
+                                for k, v in generation_config.items()
+                                if k != "thinkingConfig"
+                            }
+                            resp = await client.post(
+                                url,
+                                params={"key": self.api_key},
+                                json={
+                                    "contents": [{"role": "user", "parts": parts}],
+                                    "generationConfig": gen_cfg_fallback,
+                                },
                             )
-                            break
-                        if "API_KEY_INVALID" in body_preview or resp.status_code in (401, 403):
-                            self.ultimo_error = f"Google rechazó la GEMINI_API_KEY (HTTP {resp.status_code})."
-                            break
-                        if resp.status_code == 429:
-                            self.ultimo_error = "Cuota gratuita de Gemini temporalmente agotada (HTTP 429)."
-                        continue
 
-                    data = resp.json()
-                    candidates = data.get("candidates") or []
-                    if not candidates:
-                        continue
-                    content_parts = candidates[0].get("content", {}).get("parts") or []
-                    texto = "".join(
-                        p.get("text", "") for p in content_parts if not p.get("thought")
-                    ).strip()
-                    if texto:
-                        return texto
-                except Exception as exc:
-                    self.ultimo_error = f"Timeout de red hacia Gemini ({modelo})."
-                    logger.warning(
-                        "Timeout o error de red consultando Gemini (%s): %s", modelo, exc
-                    )
-                    break
+                        if resp.status_code >= 400:
+                            body_preview = resp.text[:400]
+                            logger.warning(
+                                "Gemini (%s en %s) devolvió HTTP %d: %s",
+                                modelo,
+                                base_url.split("/")[2],
+                                resp.status_code,
+                                body_preview,
+                            )
+                            if resp.status_code in (401, 403):
+                                self.ultimo_error = f"Permiso denegado en {base_url.split('/')[2]} (HTTP {resp.status_code})."
+                                break
+                            if resp.status_code == 429:
+                                self.ultimo_error = "Cuota gratuita de Gemini temporalmente agotada (HTTP 429)."
+                            continue
+
+                        data = resp.json()
+                        candidates = data.get("candidates") or []
+                        if not candidates:
+                            continue
+                        content_parts = (
+                            candidates[0].get("content", {}).get("parts") or []
+                        )
+                        texto = "".join(
+                            p.get("text", "")
+                            for p in content_parts
+                            if not p.get("thought")
+                        ).strip()
+                        if texto:
+                            self.ultimo_error = None
+                            return texto
+                    except Exception as exc:
+                        self.ultimo_error = f"Timeout de red hacia Gemini ({modelo})."
+                        logger.warning(
+                            "Timeout o error de red consultando Gemini (%s): %s",
+                            modelo,
+                            exc,
+                        )
 
         return None
 

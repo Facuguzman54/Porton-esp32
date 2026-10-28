@@ -801,6 +801,7 @@ async def procesar_telemetria(
 # ENDPOINTS PROTEGIDOS PARA LA PWA FAMILIAR (Requieren Bearer Token válido)
 # ---------------------------------------------------------------------------
 @app.post("/api/consultar-ia", response_model=ConsultaIaResponse)
+@app.post("/api/consultar-ia/", response_model=ConsultaIaResponse, include_in_schema=False)
 async def consultar_asistente_visual(
     req: ConsultaIaRequest,
     _usuario: UsuarioAutenticado = Depends(verificar_usuario_autenticado),
@@ -832,6 +833,22 @@ async def consultar_asistente_visual(
         respuesta=respuesta_texto,
         timestamp_captura=ts_captura,
         consultado_en=ahora_iso,
+    )
+
+
+@app.get("/api/consultar-ia", response_model=ConsultaIaResponse, include_in_schema=False)
+async def consultar_asistente_visual_get(
+    pregunta: str = "¿Cómo está el portón y qué se ve en el frente?",
+    usuario: UsuarioAutenticado = Depends(verificar_usuario_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> ConsultaIaResponse:
+    """
+    Soporte GET para `/api/consultar-ia` (evita que abrir la URL en DevTools caiga en el 404 del SPA).
+    """
+    return await consultar_asistente_visual(
+        req=ConsultaIaRequest(pregunta=pregunta),
+        _usuario=usuario,
+        settings=settings,
     )
 
 
