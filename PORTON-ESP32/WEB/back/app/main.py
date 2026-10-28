@@ -25,6 +25,7 @@ from .schemas import (
     ConsultaIaRequest,
     ConsultaIaResponse,
     CrearUsuarioRequest,
+    EnviarPushAdminRequest,
     EstadoPorton,
     LoginRequest,
     LoginResponse,
@@ -879,6 +880,112 @@ async def suscribir_notificaciones_push(
     return {
         "ok": True,
         "mensaje": "Suscripción Web Push registrada correctamente.",
+    }
+
+
+def _describir_user_agent(ua: str | None) -> str:
+    if not ua:
+        return "Dispositivo PWA"
+    ua_l = ua.lower()
+    so = (
+        "Android"
+        if "android" in ua_l
+        else "iPhone/iOS"
+        if "iphone" in ua_l or "ipad" in ua_l
+        else "Windows"
+        if "windows" in ua_l
+        else "Mac"
+        if "macintosh" in ua_l
+        else "Linux"
+        if "linux" in ua_l
+        else "Dispositivo"
+    )
+    nav = (
+        "Edge"
+        if "edg/" in ua_l
+        else "Chrome"
+        if "chrome/" in ua_l
+        else "Firefox"
+        if "firefox/" in ua_l
+        else "Safari"
+        if "safari/" in ua_l
+        else "Navegador"
+    )
+    return f"{so} · {nav}"
+
+
+@app.get("/api/push/suscripciones")
+async def listar_suscripciones_push_admin(
+    _admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """
+    Devuelve la cantidad y lista resumida de dispositivos con Web Push activo (solo Admin).
+    """
+    supabase = SupabaseService(settings)
+    rows = await supabase.listar_suscripciones_push()
+    dispositivos = [
+        {
+            "id": str(r.get("id") or i),
+            "etiqueta": _describir_user_agent(r.get("user_agent")),
+            "user_agent": r.get("user_agent") or "",
+            "updated_at": r.get("updated_at") or r.get("created_at"),
+        }
+        for i, r in enumerate(rows)
+    ]
+    return {
+        "ok": True,
+        "total": len(dispositivos),
+        "dispositivos": dispositivos,
+    }
+
+
+@app.post("/api/push/enviar")
+async def enviar_notificacion_push_personalizada(
+    req: EnviarPushAdminRequest,
+    admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """
+    Permite al Administrador enviar una notificación Push personalizada a todos los
+    dispositivos suscriptos con la PWA instalada y difundirla en tiempo real por Supabase Realtime.
+    """
+    supabase = SupabaseService(settings)
+    push = PushService(settings, supabase)
+
+    titulo_limpio = req.titulo.strip() or f"📢 Aviso de {admin.nombre}"
+    mensaje_limpio = req.mensaje.strip()
+    tag_unico = f"aviso-admin-{int(time.time())}"
+
+    suscripciones = await supabase.listar_suscripciones_push()
+    total_suscriptos = len(suscripciones)
+
+    enviados_push = await push.enviar_alerta_familiar(
+        titulo=titulo_limpio,
+        cuerpo=mensaje_limpio,
+        tag=tag_unico,
+    )
+
+    evento_registrado = None
+    if req.registrar_en_actividad:
+        evento_registrado = await supabase.registrar_evento(
+            tipo="AVISO_ADMIN",
+            titulo=titulo_limpio,
+            detalle=f"{mensaje_limpio} (Enviado por @{admin.username})",
+            metodo="ESP32_LOCAL",
+            duracion_segundos=0,
+            estado_texto="AVISO_ADMIN",
+        )
+
+    return {
+        "ok": True,
+        "enviados_push": enviados_push,
+        "total_suscriptos": total_suscriptos,
+        "realtime_difundido": bool(evento_registrado),
+        "mensaje": (
+            f"Notificación enviada a {enviados_push} dispositivo(s) por Web Push"
+            + (" y difundida en vivo a la PWA." if evento_registrado else ".")
+        ),
     }
 
 

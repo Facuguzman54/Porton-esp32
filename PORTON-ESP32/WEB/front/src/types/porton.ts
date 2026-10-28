@@ -64,7 +64,23 @@ export type TipoEvento =
   | 'VALIDACION_IA'
   | 'ALERTA_TIEMPO'
   | 'CAMARA_MOVIDA'
-  | 'CAMARA_DESCONECTADA';
+  | 'CAMARA_DESCONECTADA'
+  | 'AVISO_ADMIN';
+
+export interface DispositivoPushSuscripto {
+  id: string;
+  etiqueta: string;
+  user_agent: string;
+  updated_at?: string | null;
+}
+
+export interface EnviarPushAdminResponse {
+  ok: boolean;
+  enviados_push: number;
+  total_suscriptos: number;
+  realtime_difundido: boolean;
+  mensaje: string;
+}
 
 export interface EventoPortonRow {
   id: string | number;

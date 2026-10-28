@@ -10,6 +10,7 @@ TipoEvento = Literal[
     "ALERTA_TIEMPO",
     "CAMARA_MOVIDA",
     "CAMARA_DESCONECTADA",
+    "AVISO_ADMIN",
 ]
 
 
@@ -192,3 +193,20 @@ class PushSubscriptionPayload(BaseModel):
 
     endpoint: str
     keys: PushKeys
+
+
+class EnviarPushAdminRequest(BaseModel):
+    titulo: str = Field(
+        default="📢 Aviso de Admin · Vigilante Frente",
+        min_length=2,
+        max_length=100,
+    )
+    mensaje: str = Field(
+        ...,
+        min_length=1,
+        max_length=350,
+    )
+    registrar_en_actividad: bool = Field(
+        default=True,
+        description="Si es True, también inserta el aviso en eventos_porton para notificar por Supabase Realtime.",
+    )

@@ -2,6 +2,8 @@ import type {
   ActualizarUsuarioPayload,
   ConsultaIaResponse,
   CrearUsuarioPayload,
+  DispositivoPushSuscripto,
+  EnviarPushAdminResponse,
   EstadoBackendResponse,
   LoginResponse,
   UsuarioPerfil,
@@ -385,11 +387,74 @@ export async function verificarEstadoPushInicial(): Promise<boolean> {
   if (Notification.permission !== 'granted') return false;
 
   try {
-    const registration = await navigator.serviceWorker.getRegistration('/sw.js');
-    if (!registration) return false;
-    const sub = await registration.pushManager.getSubscription();
+    const registration = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    let sub = await registration.pushManager.getSubscription();
+    if (!sub && VAPID_PUBLIC_KEY) {
+      sub = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
+      });
+    }
+    if (sub && getStoredAccessToken()) {
+      fetch(`${API_BASE_URL}/api/push/suscribir`, {
+        method: 'POST',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(sub.toJSON()),
+      }).catch(() => {});
+    }
     return Boolean(sub);
   } catch {
     return false;
   }
+}
+
+export async function listarSuscripcionesPushAdmin(): Promise<{
+  total: number;
+  dispositivos: DispositivoPushSuscripto[];
+}> {
+  const response = await fetch(`${API_BASE_URL}/api/push/suscripciones`, {
+    method: 'GET',
+    headers: buildAuthHeaders({ Accept: 'application/json' }),
+  });
+
+  if (!response.ok) {
+    const msg = await parseErrorMessage(
+      response,
+      `No se pudieron consultar los dispositivos Push (${response.status}).`
+    );
+    throw new Error(msg);
+  }
+
+  const data = (await response.json()) as {
+    ok: boolean;
+    total: number;
+    dispositivos: DispositivoPushSuscripto[];
+  };
+  return {
+    total: data.total ?? 0,
+    dispositivos: Array.isArray(data.dispositivos) ? data.dispositivos : [],
+  };
+}
+
+export async function enviarNotificacionPushAdmin(payload: {
+  titulo: string;
+  mensaje: string;
+  registrar_en_actividad?: boolean;
+}): Promise<EnviarPushAdminResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/push/enviar`, {
+    method: 'POST',
+    headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const msg = await parseErrorMessage(
+      response,
+      `No se pudo enviar la notificación Push (${response.status}).`
+    );
+    throw new Error(msg);
+  }
+
+  return (await response.json()) as EnviarPushAdminResponse;
 }

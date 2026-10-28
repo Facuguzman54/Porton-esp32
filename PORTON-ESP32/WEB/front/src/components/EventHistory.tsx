@@ -14,6 +14,8 @@ function obtenerColorPunto(tipo: TipoEvento): string {
       return 'bg-amber-400';
     case 'VALIDACION_IA':
       return 'bg-indigo-400';
+    case 'AVISO_ADMIN':
+      return 'bg-cyan-400';
     case 'ALERTA_TIEMPO':
     case 'CAMARA_MOVIDA':
     case 'CAMARA_DESCONECTADA':

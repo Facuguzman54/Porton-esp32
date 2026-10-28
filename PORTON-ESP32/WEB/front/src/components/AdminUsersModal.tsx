@@ -4,9 +4,11 @@ import {
   cambiarMiPassword,
   crearUsuarioAdmin,
   eliminarUsuarioAdmin,
+  enviarNotificacionPushAdmin,
+  listarSuscripcionesPushAdmin,
   listarUsuariosAdmin,
 } from '../lib/api';
-import type { UsuarioPerfil } from '../types/porton';
+import type { DispositivoPushSuscripto, UsuarioPerfil } from '../types/porton';
 
 interface AdminUsersModalProps {
   usuarioActual: UsuarioPerfil;
@@ -14,7 +16,14 @@ interface AdminUsersModalProps {
   onCerrar: () => void;
 }
 
-type TabAdmin = 'usuarios' | 'mi-password';
+type TabAdmin = 'usuarios' | 'push' | 'mi-password';
+
+const MENSAJES_RAPIDOS_PUSH = [
+  '🚪 ¿Alguien puede cerrar el portón?',
+  '🚗 Estoy llegando a casa, abran por favor',
+  '📦 Llegó un pedido en la puerta',
+  '👀 Revisen la cámara del frente',
+];
 
 export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
   usuarioActual,
@@ -47,6 +56,14 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
   const [passConfirmar, setPassConfirmar] = useState<string>('');
   const [cambiandoMiPass, setCambiandoMiPass] = useState<boolean>(false);
 
+  // Estado para enviar notificación Push personalizada a dispositivos familiares
+  const [dispositivosPush, setDispositivosPush] = useState<DispositivoPushSuscripto[]>([]);
+  const [cargandoPushList, setCargandoPushList] = useState<boolean>(false);
+  const [pushTitulo, setPushTitulo] = useState<string>('📢 Aviso de Admin · Vigilante Frente');
+  const [pushMensaje, setPushMensaje] = useState<string>('');
+  const [pushRegistrarActividad, setPushRegistrarActividad] = useState<boolean>(true);
+  const [enviandoPush, setEnviandoPush] = useState<boolean>(false);
+
   const cargarUsuarios = useCallback(async () => {
     setCargandoLista(true);
     setErrorGeneral(null);
@@ -62,11 +79,26 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
     }
   }, []);
 
-  useEffect(() => {
-    if (abierto && tab === 'usuarios') {
-      cargarUsuarios();
+  const cargarSuscripcionesPush = useCallback(async () => {
+    setCargandoPushList(true);
+    try {
+      const res = await listarSuscripcionesPushAdmin();
+      setDispositivosPush(res.dispositivos);
+    } catch {
+      // No bloquear la pestaña si aún no hay tabla o falla la consulta
+    } finally {
+      setCargandoPushList(false);
     }
-  }, [abierto, tab, cargarUsuarios]);
+  }, []);
+
+  useEffect(() => {
+    if (!abierto) return;
+    if (tab === 'usuarios') {
+      cargarUsuarios();
+    } else if (tab === 'push') {
+      cargarSuscripcionesPush();
+    }
+  }, [abierto, tab, cargarUsuarios, cargarSuscripcionesPush]);
 
   if (!abierto) return null;
 
@@ -195,6 +227,30 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
     }
   };
 
+  const handleEnviarPushPersonalizado = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (enviandoPush || !pushMensaje.trim()) return;
+
+    setEnviandoPush(true);
+    setErrorGeneral(null);
+    try {
+      const res = await enviarNotificacionPushAdmin({
+        titulo: pushTitulo.trim() || `📢 Aviso de ${usuarioActual.nombre}`,
+        mensaje: pushMensaje.trim(),
+        registrar_en_actividad: pushRegistrarActividad,
+      });
+      setPushMensaje('');
+      mostrarFeedbackExito(res.mensaje);
+      cargarSuscripcionesPush();
+    } catch (err) {
+      setErrorGeneral(
+        err instanceof Error ? err.message : 'Error al enviar la notificación Push.'
+      );
+    } finally {
+      setEnviandoPush(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -221,14 +277,14 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
         </div>
 
         {/* Selector de Pestañas */}
-        <div className="grid grid-cols-2 gap-1.5 p-2.5 bg-slate-950/60 border-b border-slate-800/80 text-xs">
+        <div className="grid grid-cols-3 gap-1.5 p-2.5 bg-slate-950/60 border-b border-slate-800/80 text-xs">
           <button
             type="button"
             onClick={() => {
               setTab('usuarios');
               setErrorGeneral(null);
             }}
-            className={`py-2 px-3 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+            className={`py-2 px-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
               tab === 'usuarios'
                 ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -240,17 +296,32 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
           <button
             type="button"
             onClick={() => {
+              setTab('push');
+              setErrorGeneral(null);
+            }}
+            className={`py-2 px-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+              tab === 'push'
+                ? 'bg-cyan-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <i className="fa-solid fa-bullhorn" />
+            <span>Enviar Push</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               setTab('mi-password');
               setErrorGeneral(null);
             }}
-            className={`py-2 px-3 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+            className={`py-2 px-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
               tab === 'mi-password'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
             <i className="fa-solid fa-key" />
-            <span>Mi Clave Admin</span>
+            <span>Mi Clave</span>
           </button>
         </div>
 
@@ -509,8 +580,116 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                 </div>
               )}
             </div>
+          ) : tab === 'push' ? (
+            /* Pestaña 2: Enviar notificación Push personalizada a dispositivos familiares */
+            <form onSubmit={handleEnviarPushPersonalizado} className="space-y-3">
+              <div className="rounded-2xl bg-slate-800/60 border border-slate-800 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                    <i className="fa-solid fa-mobile-screen-button text-cyan-400" />
+                    Dispositivos con Push Activo
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                    {cargandoPushList ? '...' : `${dispositivosPush.length} suscripto(s)`}
+                  </span>
+                </div>
+                {dispositivosPush.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {dispositivosPush.map((d) => (
+                      <span
+                        key={d.id}
+                        className="px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-700/80 text-[10px] text-slate-300 flex items-center gap-1"
+                      >
+                        <i className="fa-solid fa-bell text-emerald-400 text-[9px]" />
+                        {d.etiqueta}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400">
+                    Los dispositivos que toquen &ldquo;Activar Push&rdquo; recibirán la alerta en segundo plano, y los que tengan la PWA abierta la recibirán al instante en pantalla.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-slate-300 mb-1.5">
+                  Mensajes rápidos (tocá para completar)
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {MENSAJES_RAPIDOS_PUSH.map((chip) => (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => setPushMensaje(chip)}
+                      className="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] text-slate-300 transition cursor-pointer"
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                  Título de la notificación
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={100}
+                  value={pushTitulo}
+                  onChange={(e) => setPushTitulo(e.target.value)}
+                  placeholder="📢 Aviso de Admin · Vigilante Frente"
+                  className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-500 rounded-xl px-3 py-2 text-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                  Mensaje personalizado
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  maxLength={350}
+                  value={pushMensaje}
+                  onChange={(e) => setPushMensaje(e.target.value)}
+                  placeholder="Escribí el mensaje que verán los demás dispositivos familiares..."
+                  className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-500 rounded-xl px-3 py-2 text-white outline-none resize-none"
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-[11px] text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={pushRegistrarActividad}
+                  onChange={(e) => setPushRegistrarActividad(e.target.checked)}
+                  className="rounded accent-cyan-500"
+                />
+                <span>Mostrar también en vivo en &ldquo;Actividad de Hoy&rdquo; (Realtime)</span>
+              </label>
+
+              <button
+                type="submit"
+                disabled={enviandoPush || !pushMensaje.trim()}
+                className="w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {enviandoPush ? (
+                  <>
+                    <i className="fa-solid fa-circle-notch fa-spin" />
+                    <span>Enviando notificación...</span>
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-paper-plane" />
+                    <span>Enviar Notificación Push a Dispositivos</span>
+                  </>
+                )}
+              </button>
+            </form>
           ) : (
-            /* Pestaña 2: Cambiar mi propia contraseña de usuario admin */
+            /* Pestaña 3: Cambiar mi propia contraseña de usuario admin */
             <form onSubmit={handleCambiarMiPassword} className="space-y-3">
               <div className="rounded-2xl bg-slate-800/50 border border-slate-800 p-3">
                 <p className="font-semibold text-slate-200">

@@ -29,6 +29,7 @@ export function usePortonRealtime(autenticado: boolean) {
   const [estadoActual, setEstadoActual] = useState<EstadoActualRow>(ESTADO_INICIAL_BASE);
   const [eventosHoy, setEventosHoy] = useState<EventoPortonRow[]>([]);
   const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false);
+  const [avisoReciente, setAvisoReciente] = useState<EventoPortonRow | null>(null);
 
   useEffect(() => {
     if (!autenticado) {
@@ -115,6 +116,26 @@ export function usePortonRealtime(autenticado: boolean) {
               nuevoEvento,
               ...prev.filter((e) => String(e.id) !== String(nuevoEvento.id)),
             ]);
+            if (nuevoEvento.tipo === 'AVISO_ADMIN') {
+              setAvisoReciente(nuevoEvento);
+              if (
+                typeof window !== 'undefined' &&
+                'Notification' in window &&
+                Notification.permission === 'granted' &&
+                'serviceWorker' in navigator
+              ) {
+                navigator.serviceWorker.ready
+                  .then((reg) => {
+                    reg.showNotification(nuevoEvento.titulo || '📢 Aviso de Admin', {
+                      body: nuevoEvento.detalle,
+                      icon: '/icon-192.svg',
+                      badge: '/icon-192.svg',
+                      tag: `aviso-rt-${nuevoEvento.id}`,
+                    });
+                  })
+                  .catch(() => {});
+              }
+            }
           }
         }
       )
@@ -171,5 +192,7 @@ export function usePortonRealtime(autenticado: boolean) {
     estadisticas,
     realtimeConnected,
     esp32Online,
+    avisoReciente,
+    cerrarAvisoReciente: () => setAvisoReciente(null),
   };
 }

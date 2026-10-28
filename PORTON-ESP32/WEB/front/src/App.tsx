@@ -12,8 +12,15 @@ import { usePortonRealtime } from './hooks/usePortonRealtime';
 
 export const App: React.FC = () => {
   const { usuario, cargandoAuth, errorAuth, iniciarSesion, cerrarSesion } = useAuth();
-  const { estadoActual, eventosHoy, estadisticas, realtimeConnected, esp32Online } =
-    usePortonRealtime(Boolean(usuario));
+  const {
+    estadoActual,
+    eventosHoy,
+    estadisticas,
+    realtimeConnected,
+    esp32Online,
+    avisoReciente,
+    cerrarAvisoReciente,
+  } = usePortonRealtime(Boolean(usuario));
 
   const [modalAdminAbierto, setModalAdminAbierto] = useState<boolean>(false);
 
@@ -52,6 +59,28 @@ export const App: React.FC = () => {
 
         {/* CONTENIDO PRINCIPAL SCROLLABLE */}
         <main className="p-4 space-y-4 flex-1 overflow-y-auto">
+          {avisoReciente && (
+            <div className="rounded-2xl bg-cyan-950/85 border border-cyan-500/50 p-3.5 shadow-lg flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 shrink-0 mt-0.5">
+                  <i className="fa-solid fa-bullhorn text-sm" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-cyan-200">{avisoReciente.titulo}</p>
+                  <p className="text-xs text-slate-200 mt-0.5">{avisoReciente.detalle}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={cerrarAvisoReciente}
+                className="text-cyan-300 hover:text-white text-xs px-1.5 py-0.5 cursor-pointer"
+                title="Cerrar aviso"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+          )}
+
           {/* 1. TARJETA DE ESTADO ACTUAL */}
           <StatusCard estadoActual={estadoActual} />
 
