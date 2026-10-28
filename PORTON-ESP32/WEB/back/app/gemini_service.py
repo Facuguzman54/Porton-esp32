@@ -45,7 +45,7 @@ class GeminiService:
 
         generation_config: dict[str, Any] = {
             "temperature": 0.2,
-            "maxOutputTokens": 400,
+            "maxOutputTokens": 1024,
         }
         if json_mode:
             generation_config["responseMimeType"] = "application/json"
@@ -59,41 +59,61 @@ class GeminiService:
         if "gemini-2.0-flash" not in modelos_a_probar:
             modelos_a_probar.append("gemini-2.0-flash")
 
+        # Las claves que comienzan con "AQ." pertenecen a Vertex AI Express Mode (aiplatform.googleapis.com),
+        # mientras que las que comienzan con "AIza" pertenecen a Google AI Studio (generativelanguage.googleapis.com).
+        es_vertex_key = self.api_key.startswith("AQ.")
+        base_urls = (
+            [
+                "https://aiplatform.googleapis.com/v1/publishers/google/models",
+                "https://generativelanguage.googleapis.com/v1beta/models",
+            ]
+            if es_vertex_key
+            else [
+                "https://generativelanguage.googleapis.com/v1beta/models",
+                "https://aiplatform.googleapis.com/v1/publishers/google/models",
+            ]
+        )
+
         for modelo in modelos_a_probar:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
-            try:
-                async with httpx.AsyncClient(timeout=12.0) as client:
-                    resp = await client.post(
-                        url,
-                        params={"key": self.api_key},
-                        json=payload,
-                    )
-                    if resp.status_code == 401 or resp.status_code == 403:
-                        # Reintentar enviando como x-goog-api-key header
+            for base_url in base_urls:
+                url = f"{base_url}/{modelo}:generateContent"
+                try:
+                    async with httpx.AsyncClient(timeout=15.0) as client:
                         resp = await client.post(
                             url,
-                            headers={"x-goog-api-key": self.api_key},
+                            params={"key": self.api_key},
                             json=payload,
                         )
-                    if resp.status_code >= 400:
-                        logger.warning(
-                            "Gemini (%s) devolvió HTTP %d: %s",
-                            modelo,
-                            resp.status_code,
-                            resp.text[:250],
-                        )
-                        continue
+                        if resp.status_code in (401, 403):
+                            resp = await client.post(
+                                url,
+                                headers={"x-goog-api-key": self.api_key},
+                                json=payload,
+                            )
+                        if resp.status_code >= 400:
+                            logger.warning(
+                                "Gemini (%s en %s) devolvió HTTP %d: %s",
+                                modelo,
+                                base_url.split("/")[2],
+                                resp.status_code,
+                                resp.text[:250],
+                            )
+                            continue
 
-                    data = resp.json()
-                    candidates = data.get("candidates") or []
-                    if not candidates:
-                        continue
-                    content_parts = candidates[0].get("content", {}).get("parts") or []
-                    texto = "".join(p.get("text", "") for p in content_parts).strip()
-                    if texto:
-                        return texto
-            except Exception as exc:
-                logger.warning("Timeout o error de red consultando Gemini (%s): %s", modelo, exc)
+                        data = resp.json()
+                        candidates = data.get("candidates") or []
+                        if not candidates:
+                            continue
+                        content_parts = candidates[0].get("content", {}).get("parts") or []
+                        texto = "".join(
+                            p.get("text", "") for p in content_parts if not p.get("thought")
+                        ).strip()
+                        if texto:
+                            return texto
+                except Exception as exc:
+                    logger.warning(
+                        "Timeout o error de red consultando Gemini (%s): %s", modelo, exc
+                    )
 
         return None
 
