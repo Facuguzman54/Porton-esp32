@@ -62,7 +62,8 @@ class SupabaseService:
                     headers=headers,
                     json={"ultimo_acceso": datetime.now(timezone.utc).isoformat()},
                 )
-                return usuario
+            completo = await self.obtener_usuario_por_id(str(usuario["id"]))
+            return completo or usuario
         except Exception as exc:
             logger.error("Error verificando credenciales en Supabase: %s", exc)
             return None
@@ -135,7 +136,10 @@ class SupabaseService:
         return None, None
 
     async def obtener_usuario_por_id(self, user_id: str) -> dict[str, Any] | None:
-        url = f"{self.rest_url}/usuarios?id=eq.{user_id}&select=id,username,nombre,rol,activo,auth_user_id,ultimo_acceso,created_at"
+        url = (
+            f"{self.rest_url}/usuarios?id=eq.{user_id}"
+            "&select=id,username,nombre,rol,activo,auth_user_id,ver_roi,ver_estadisticas,enviar_push,ultimo_acceso,created_at"
+        )
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get(url, headers=self._headers())
@@ -149,7 +153,7 @@ class SupabaseService:
     async def listar_usuarios(self) -> list[dict[str, Any]]:
         url = (
             f"{self.rest_url}/usuarios"
-            "?select=id,username,nombre,rol,activo,ultimo_acceso,created_at"
+            "?select=id,username,nombre,rol,activo,ver_roi,ver_estadisticas,enviar_push,ultimo_acceso,created_at"
             "&order=created_at.asc"
         )
         try:
@@ -168,6 +172,9 @@ class SupabaseService:
         rol: str,
         password: str,
         activo: bool = True,
+        ver_roi: bool = False,
+        ver_estadisticas: bool = False,
+        enviar_push: bool = False,
     ) -> dict[str, Any] | None:
         url = f"{self.rest_url}/usuarios"
         headers = self._headers(
@@ -176,12 +183,17 @@ class SupabaseService:
                 "Prefer": "return=representation",
             }
         )
+        rol_clean = rol.strip().lower()
+        es_admin = rol_clean == "admin"
         body = {
             "username": username.strip().lower(),
             "nombre": nombre.strip(),
-            "rol": rol.strip().lower(),
+            "rol": rol_clean,
             "password": password,
             "activo": activo,
+            "ver_roi": True if es_admin else ver_roi,
+            "ver_estadisticas": True if es_admin else ver_estadisticas,
+            "enviar_push": True if es_admin else enviar_push,
         }
         try:
             async with httpx.AsyncClient(timeout=6.0) as client:
@@ -192,6 +204,19 @@ class SupabaseService:
         except Exception as exc:
             logger.error("Error creando usuario %s en Supabase: %s", username, exc)
             return None
+
+    async def actualizar_funcionalidades_familiares(
+        self, cambios: dict[str, bool]
+    ) -> list[dict[str, Any]]:
+        """
+        Actualiza masivamente los permisos (`ver_roi`, `ver_estadisticas`, `enviar_push`)
+        de los usuarios con rol `familiar` y devuelve la lista completa de usuarios actualizada.
+        """
+        usuarios = await self.listar_usuarios()
+        for u in usuarios:
+            if str(u.get("rol", "")).strip().lower() != "admin":
+                await self.actualizar_usuario(str(u["id"]), cambios)
+        return await self.listar_usuarios()
 
     async def actualizar_usuario(
         self, user_id: str, cambios: dict[str, Any]
@@ -253,10 +278,18 @@ class SupabaseService:
             logger.warning("No se pudo leer estado_actual desde Supabase: %s", exc)
             return None
 
-    async def listar_eventos_hoy(self, limite: int = 50) -> list[dict[str, Any]]:
+    async def listar_eventos_hoy(
+        self, limite: int = 250, dias: int = 7
+    ) -> list[dict[str, Any]]:
+        """
+        Devuelve el historial de eventos de los últimos `dias` días (por defecto 7 días).
+        """
         ahora = datetime.now(timezone.utc)
-        inicio_dia = ahora.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=3)
-        inicio_iso = inicio_dia.strftime("%Y-%m-%dT%H:%M:%SZ")
+        inicio_ventana = (
+            ahora.replace(hour=0, minute=0, second=0, microsecond=0)
+            - timedelta(days=max(dias - 1, 0), hours=3)
+        )
+        inicio_iso = inicio_ventana.strftime("%Y-%m-%dT%H:%M:%SZ")
         url = (
             f"{self.rest_url}/eventos_porton"
             f"?created_at=gte.{inicio_iso}"
@@ -268,8 +301,22 @@ class SupabaseService:
                 resp.raise_for_status()
                 return resp.json()
         except Exception as exc:
-            logger.warning("Error listando eventos de hoy: %s", exc)
+            logger.warning("Error listando eventos recientes (%d días): %s", dias, exc)
             return []
+
+    async def eliminar_evento(self, evento_id: str) -> bool:
+        """
+        Elimina un evento o notificación puntual de `public.eventos_porton` (ej. falsa alarma).
+        """
+        url = f"{self.rest_url}/eventos_porton?id=eq.{evento_id}"
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                resp = await client.delete(url, headers=self._headers())
+                resp.raise_for_status()
+                return True
+        except Exception as exc:
+            logger.error("Error eliminando evento %s en Supabase: %s", evento_id, exc)
+            return False
 
     async def actualizar_estado_actual(self, payload: dict[str, Any]) -> dict[str, Any] | None:
         url = f"{self.rest_url}/estado_actual?id=eq.1"

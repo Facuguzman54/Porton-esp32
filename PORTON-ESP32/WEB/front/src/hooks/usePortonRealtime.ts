@@ -71,15 +71,16 @@ export function usePortonRealtime(autenticado: boolean) {
         setEstadoActual(estadoData as EstadoActualRow);
       }
 
-      const inicioHoy = new Date();
-      inicioHoy.setHours(0, 0, 0, 0);
+      const inicioVentana = new Date();
+      inicioVentana.setDate(inicioVentana.getDate() - 6);
+      inicioVentana.setHours(0, 0, 0, 0);
 
       const { data: eventosData } = await client
         .from('eventos_porton')
         .select('*')
-        .gte('created_at', inicioHoy.toISOString())
+        .gte('created_at', inicioVentana.toISOString())
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(250);
 
       if (!cancelado && eventosData) {
         setEventosHoy(eventosData as EventoPortonRow[]);
@@ -88,7 +89,7 @@ export function usePortonRealtime(autenticado: boolean) {
 
     cargarDatosIniciales();
 
-    // 2. Suscripción Realtime a cambios de estado y nuevos eventos en Supabase
+    // 2. Suscripción Realtime a cambios de estado y nuevos/eliminados eventos en Supabase
     if (!isSupabaseConfigured || !client) {
       return () => {
         cancelado = true;
@@ -139,6 +140,16 @@ export function usePortonRealtime(autenticado: boolean) {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'eventos_porton' },
+        (payload) => {
+          const oldId = payload.old && (payload.old as { id?: string | number }).id;
+          if (oldId !== undefined) {
+            setEventosHoy((prev) => prev.filter((e) => String(e.id) !== String(oldId)));
+          }
+        }
+      )
       .subscribe((status) => {
         if (!cancelado) {
           setRealtimeConnected(status === 'SUBSCRIBED');
@@ -159,10 +170,19 @@ export function usePortonRealtime(autenticado: boolean) {
     return diffMs < 35000;
   }, [autenticado, estadoActual]);
 
-  // Calcular resumen diario a partir de los eventos del día (soportando duracion_segundos y duracion_seg)
+  // Calcular resumen diario a partir de los eventos ocurridos en el día de hoy
   const estadisticas: EstadisticasDiarias = useMemo(() => {
-    const aperturasHoy = eventosHoy.filter((e) => e.tipo === 'PORTON_ABIERTO').length;
-    const cierresConDuracion = eventosHoy.filter((e) => {
+    const inicioHoy = new Date();
+    inicioHoy.setHours(0, 0, 0, 0);
+    const tsInicioHoy = inicioHoy.getTime();
+
+    const soloHoy = eventosHoy.filter((e) => {
+      const ts = new Date(e.created_at).getTime();
+      return !Number.isNaN(ts) && ts >= tsInicioHoy;
+    });
+
+    const aperturasHoy = soloHoy.filter((e) => e.tipo === 'PORTON_ABIERTO').length;
+    const cierresConDuracion = soloHoy.filter((e) => {
       const seg = e.duracion_segundos ?? e.duracion_seg ?? 0;
       return e.tipo === 'PORTON_CERRADO' && typeof seg === 'number' && seg > 0;
     });
@@ -177,7 +197,7 @@ export function usePortonRealtime(autenticado: boolean) {
           60
         : 0;
 
-    const alertasExcedidasHoy = eventosHoy.filter((e) => e.tipo === 'ALERTA_TIEMPO').length;
+    const alertasExcedidasHoy = soloHoy.filter((e) => e.tipo === 'ALERTA_TIEMPO').length;
 
     return {
       aperturasHoy,
@@ -185,6 +205,10 @@ export function usePortonRealtime(autenticado: boolean) {
       alertasExcedidasHoy,
     };
   }, [eventosHoy]);
+
+  const eliminarEventoLocal = (eventoId: string | number) => {
+    setEventosHoy((prev) => prev.filter((e) => String(e.id) !== String(eventoId)));
+  };
 
   return {
     estadoActual,
@@ -194,5 +218,6 @@ export function usePortonRealtime(autenticado: boolean) {
     esp32Online,
     avisoReciente,
     cerrarAvisoReciente: () => setAvisoReciente(null),
+    eliminarEventoLocal,
   };
 }

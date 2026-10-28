@@ -84,18 +84,30 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Acciones derechas: Admin Usuarios (solo admin) + Push Web + Cerrar sesión */}
+        {/* Acciones derechas: Admin Usuarios / Enviar Aviso + Push Web + Cerrar sesión */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {esAdmin && (
+          {esAdmin ? (
             <button
               type="button"
               onClick={onAbrirAdminPanel}
-              title="Administrar usuarios y cambiar contraseña de administrador"
+              title="Administrar usuarios, funcionalidades, enviar Push y cambiar clave admin"
               className="px-2.5 py-1.5 rounded-full bg-indigo-950/70 hover:bg-indigo-900/80 border border-indigo-500/40 text-xs font-medium text-indigo-300 flex items-center gap-1.5 transition cursor-pointer"
             >
               <i className="fa-solid fa-users-gear text-indigo-400" />
               <span className="hidden sm:inline">Usuarios</span>
             </button>
+          ) : (
+            Boolean(usuario.enviar_push) && (
+              <button
+                type="button"
+                onClick={onAbrirAdminPanel}
+                title="Enviar notificación Push personalizada a los demás dispositivos"
+                className="px-2.5 py-1.5 rounded-full bg-cyan-950/70 hover:bg-cyan-900/80 border border-cyan-500/40 text-xs font-medium text-cyan-300 flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <i className="fa-solid fa-bullhorn text-cyan-400" />
+                <span className="hidden sm:inline">Enviar Aviso</span>
+              </button>
+            )
           )}
 
           <button

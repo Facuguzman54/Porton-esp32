@@ -24,6 +24,9 @@ class UsuarioAutenticado(BaseModel):
     username: str
     nombre: str
     rol: str
+    ver_roi: bool = False
+    ver_estadisticas: bool = False
+    enviar_push: bool = False
 
 
 class LoginResponse(BaseModel):
@@ -45,6 +48,9 @@ class UsuarioAdminItem(BaseModel):
     nombre: str
     rol: Literal["admin", "familiar"] | str
     activo: bool
+    ver_roi: bool = False
+    ver_estadisticas: bool = False
+    enviar_push: bool = False
     ultimo_acceso: str | None = None
     created_at: str | None = None
 
@@ -55,6 +61,9 @@ class CrearUsuarioRequest(BaseModel):
     rol: Literal["admin", "familiar"] = "familiar"
     password: str = Field(..., min_length=4, max_length=128)
     activo: bool = True
+    ver_roi: bool = False
+    ver_estadisticas: bool = False
+    enviar_push: bool = False
 
 
 CrearUsuarioAdminRequest = CrearUsuarioRequest
@@ -65,9 +74,18 @@ class ActualizarUsuarioRequest(BaseModel):
     rol: Literal["admin", "familiar"] | None = None
     password: str | None = Field(default=None, min_length=4, max_length=128)
     activo: bool | None = None
+    ver_roi: bool | None = None
+    ver_estadisticas: bool | None = None
+    enviar_push: bool | None = None
 
 
 ActualizarUsuarioAdminRequest = ActualizarUsuarioRequest
+
+
+class ActualizarFuncionalidadesRequest(BaseModel):
+    ver_roi: bool | None = None
+    ver_estadisticas: bool | None = None
+    enviar_push: bool | None = None
 
 
 

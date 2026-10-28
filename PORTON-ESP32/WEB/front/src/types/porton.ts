@@ -10,6 +10,9 @@ export interface UsuarioPerfil {
   nombre: string;
   rol: RolUsuario;
   activo?: boolean;
+  ver_roi?: boolean;
+  ver_estadisticas?: boolean;
+  enviar_push?: boolean;
   auth_user_id?: string | null;
   ultimo_acceso?: string | null;
   created_at?: string | null;
@@ -23,6 +26,9 @@ export interface CrearUsuarioPayload {
   rol: 'admin' | 'familiar';
   password: string;
   activo?: boolean;
+  ver_roi?: boolean;
+  ver_estadisticas?: boolean;
+  enviar_push?: boolean;
 }
 
 export interface ActualizarUsuarioPayload {
@@ -30,6 +36,15 @@ export interface ActualizarUsuarioPayload {
   rol?: 'admin' | 'familiar';
   password?: string;
   activo?: boolean;
+  ver_roi?: boolean;
+  ver_estadisticas?: boolean;
+  enviar_push?: boolean;
+}
+
+export interface ActualizarFuncionalidadesPayload {
+  ver_roi?: boolean;
+  ver_estadisticas?: boolean;
+  enviar_push?: boolean;
 }
 
 export interface LoginResponse {

@@ -20,6 +20,7 @@ export const App: React.FC = () => {
     esp32Online,
     avisoReciente,
     cerrarAvisoReciente,
+    eliminarEventoLocal,
   } = usePortonRealtime(Boolean(usuario));
 
   const [modalAdminAbierto, setModalAdminAbierto] = useState<boolean>(false);
@@ -42,6 +43,9 @@ export const App: React.FC = () => {
   }
 
   const esAdmin = String(usuario.rol || '').trim().toLowerCase() === 'admin';
+  const puedeVerRoi = esAdmin || Boolean(usuario.ver_roi);
+  const puedeVerEstadisticas = esAdmin || Boolean(usuario.ver_estadisticas);
+  const puedeEnviarPush = esAdmin || Boolean(usuario.enviar_push);
 
   return (
     <div className="text-slate-100 flex justify-center min-h-screen p-0 sm:p-6">
@@ -84,22 +88,27 @@ export const App: React.FC = () => {
           {/* 1. TARJETA DE ESTADO ACTUAL */}
           <StatusCard estadoActual={estadoActual} />
 
-          {/* 2. VISOR DE ÚLTIMA CAPTURA (ROIs visibles solo para rol admin) */}
-          <CameraViewer estadoActual={estadoActual} permitirRoi={esAdmin} />
+          {/* 2. VISOR DE ÚLTIMA CAPTURA (ROIs visibles para admin o usuarios con ver_roi habilitado) */}
+          <CameraViewer estadoActual={estadoActual} permitirRoi={puedeVerRoi} />
 
           {/* 3. ASISTENTE VISUAL IA INTERACTIVO (Permitido para Familiar y Admin) */}
           <AiAssistant ultimaCapturaIso={estadoActual.updated_at} />
 
-          {/* 4. RESUMEN DIARIO Y ESTADÍSTICAS (Exclusivo para rol admin) */}
-          {esAdmin && <DailyStats estadisticas={estadisticas} />}
+          {/* 4. RESUMEN DIARIO Y ESTADÍSTICAS (Visible para admin o usuarios con ver_estadisticas habilitado) */}
+          {puedeVerEstadisticas && <DailyStats estadisticas={estadisticas} />}
 
-          {/* 5. HISTORIAL DE EVENTOS EN TIEMPO REAL (Permitido para Familiar y Admin) */}
-          <EventHistory eventos={eventosHoy} realtimeConnected={realtimeConnected} />
+          {/* 5. HISTORIAL DE EVENTOS EN TIEMPO REAL (Últimos 7 días + borrado de falsas alarmas para admin) */}
+          <EventHistory
+            eventos={eventosHoy}
+            realtimeConnected={realtimeConnected}
+            esAdmin={esAdmin}
+            onEliminarEvento={eliminarEventoLocal}
+          />
         </main>
       </div>
 
-      {/* MODAL DE ADMINISTRACIÓN DE USUARIOS Y CAMBIO DE CONTRASEÑA ADMIN */}
-      {esAdmin && (
+      {/* MODAL DE ADMINISTRACIÓN / ENVÍO DE PUSH PERSONALIZADO */}
+      {puedeEnviarPush && (
         <AdminUsersModal
           usuarioActual={usuario}
           abierto={modalAdminAbierto}

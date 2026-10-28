@@ -1,4 +1,5 @@
 import type {
+  ActualizarFuncionalidadesPayload,
   ActualizarUsuarioPayload,
   ConsultaIaResponse,
   CrearUsuarioPayload,
@@ -204,6 +205,32 @@ export async function actualizarUsuarioAdmin(
 }
 
 /**
+ * Actualiza globalmente las funcionalidades habilitadas (`ver_roi`, `ver_estadisticas`, `enviar_push`)
+ * para los usuarios con rol `familiar` (Exclusivo rol `admin`).
+ */
+export async function actualizarFuncionalidadesFamiliaresAdmin(
+  payload: ActualizarFuncionalidadesPayload
+): Promise<UsuarioPerfil[]> {
+  const response = await fetch(`${API_BASE_URL}/api/usuarios/funcionalidades`, {
+    method: 'PATCH',
+    headers: buildAuthHeaders({
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const msg = await parseErrorMessage(
+      response,
+      'No se pudieron actualizar las funcionalidades habilitadas.'
+    );
+    throw new Error(msg);
+  }
+
+  return (await response.json()) as UsuarioPerfil[];
+}
+
+/**
  * Elimina un usuario de `public.usuarios` (Exclusivo rol `admin`).
  */
 export async function eliminarUsuarioAdmin(
@@ -223,10 +250,12 @@ export async function eliminarUsuarioAdmin(
 }
 
 /**
- * Obtiene `{ estado_actual, eventos_hoy }` desde `GET /api/estado` (requiere Bearer token).
+ * Obtiene `{ estado_actual, eventos_hoy }` de los últimos `dias` días desde `GET /api/estado`.
  */
-export async function obtenerEstadoYEventosBackend(): Promise<EstadoBackendResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/estado`, {
+export async function obtenerEstadoYEventosBackend(
+  dias: number = 7
+): Promise<EstadoBackendResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/estado?dias=${dias}`, {
     method: 'GET',
     headers: buildAuthHeaders(),
   });
@@ -240,6 +269,31 @@ export async function obtenerEstadoYEventosBackend(): Promise<EstadoBackendRespo
   }
 
   return (await response.json()) as EstadoBackendResponse;
+}
+
+/**
+ * Elimina una notificación o evento puntual de la actividad reciente (Exclusivo rol `admin`).
+ */
+export async function eliminarEventoActividadAdmin(
+  eventoId: string | number
+): Promise<{ ok: boolean; id: string; mensaje: string }> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/eventos/${encodeURIComponent(String(eventoId))}`,
+    {
+      method: 'DELETE',
+      headers: buildAuthHeaders(),
+    }
+  );
+
+  if (!response.ok) {
+    const msg = await parseErrorMessage(
+      response,
+      'No se pudo eliminar el evento de la actividad reciente.'
+    );
+    throw new Error(msg);
+  }
+
+  return (await response.json()) as { ok: boolean; id: string; mensaje: string };
 }
 
 /**

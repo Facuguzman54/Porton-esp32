@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  actualizarFuncionalidadesFamiliaresAdmin,
   actualizarUsuarioAdmin,
   cambiarMiPassword,
   crearUsuarioAdmin,
@@ -13,6 +14,7 @@ import type { DispositivoPushSuscripto, UsuarioPerfil } from '../types/porton';
 interface AdminUsersModalProps {
   usuarioActual: UsuarioPerfil;
   abierto: boolean;
+  tabInicial?: 'usuarios' | 'push' | 'mi-password';
   onCerrar: () => void;
 }
 
@@ -28,9 +30,12 @@ const MENSAJES_RAPIDOS_PUSH = [
 export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
   usuarioActual,
   abierto,
+  tabInicial,
   onCerrar,
 }) => {
-  const [tab, setTab] = useState<TabAdmin>('usuarios');
+  const esAdmin = String(usuarioActual.rol || '').trim().toLowerCase() === 'admin';
+  const [tab, setTab] = useState<TabAdmin>(esAdmin ? tabInicial || 'usuarios' : 'push');
+  const [actualizandoPermisos, setActualizandoPermisos] = useState<boolean>(false);
 
   // Estado de lista de usuarios
   const [usuarios, setUsuarios] = useState<UsuarioPerfil[]>([]);
@@ -92,13 +97,23 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
   }, []);
 
   useEffect(() => {
+    if (abierto) {
+      if (!esAdmin) {
+        setTab('push');
+      } else if (tabInicial) {
+        setTab(tabInicial);
+      }
+    }
+  }, [abierto, esAdmin, tabInicial]);
+
+  useEffect(() => {
     if (!abierto) return;
-    if (tab === 'usuarios') {
+    if (tab === 'usuarios' && esAdmin) {
       cargarUsuarios();
     } else if (tab === 'push') {
       cargarSuscripcionesPush();
     }
-  }, [abierto, tab, cargarUsuarios, cargarSuscripcionesPush]);
+  }, [abierto, tab, esAdmin, cargarUsuarios, cargarSuscripcionesPush]);
 
   if (!abierto) return null;
 
@@ -162,6 +177,65 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
       mostrarFeedbackExito(`Rol de "${u.username}" cambiado a ${siguienteRol.toUpperCase()}.`);
     } catch (err) {
       setErrorGeneral(err instanceof Error ? err.message : 'Error al actualizar el rol.');
+    }
+  };
+
+  const usuariosFamiliares = usuarios.filter(
+    (u) => String(u.rol || '').trim().toLowerCase() !== 'admin'
+  );
+  const globalVerRoi =
+    usuariosFamiliares.length > 0 && usuariosFamiliares.every((u) => Boolean(u.ver_roi));
+  const globalVerEstadisticas =
+    usuariosFamiliares.length > 0 &&
+    usuariosFamiliares.every((u) => Boolean(u.ver_estadisticas));
+  const globalEnviarPush =
+    usuariosFamiliares.length > 0 && usuariosFamiliares.every((u) => Boolean(u.enviar_push));
+
+  const handleToggleFuncionalidadGlobal = async (
+    campo: 'ver_roi' | 'ver_estadisticas' | 'enviar_push',
+    nuevoValor: boolean
+  ) => {
+    if (actualizandoPermisos) return;
+    setActualizandoPermisos(true);
+    setErrorGeneral(null);
+    try {
+      const actualizados = await actualizarFuncionalidadesFamiliaresAdmin({
+        [campo]: nuevoValor,
+      });
+      setUsuarios(actualizados);
+      const etiqueta =
+        campo === 'ver_roi'
+          ? 'Ver ROI de cámaras'
+          : campo === 'ver_estadisticas'
+          ? 'Ver Estadísticas diarias'
+          : 'Enviar Notificaciones Push';
+      mostrarFeedbackExito(
+        `${etiqueta}: ${nuevoValor ? 'HABILITADO' : 'DESHABILITADO'} para usuarios familiares.`
+      );
+    } catch (err) {
+      setErrorGeneral(
+        err instanceof Error ? err.message : 'Error al actualizar funcionalidades.'
+      );
+    } finally {
+      setActualizandoPermisos(false);
+    }
+  };
+
+  const handleTogglePermisoIndividual = async (
+    u: UsuarioPerfil,
+    campo: 'ver_roi' | 'ver_estadisticas' | 'enviar_push'
+  ) => {
+    if (String(u.rol || '').toLowerCase() === 'admin') return;
+    setErrorGeneral(null);
+    try {
+      const nuevoValor = !Boolean(u[campo]);
+      const actualizado = await actualizarUsuarioAdmin(u.id, { [campo]: nuevoValor });
+      setUsuarios((prev) => prev.map((item) => (item.id === u.id ? actualizado : item)));
+      mostrarFeedbackExito(`Permiso actualizado para @${u.username}.`);
+    } catch (err) {
+      setErrorGeneral(
+        err instanceof Error ? err.message : 'No se pudo actualizar el permiso del usuario.'
+      );
     }
   };
 
@@ -258,12 +332,16 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
         <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/95">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 text-sm">
-              <i className="fa-solid fa-users-gear" />
+              <i className={`fa-solid ${esAdmin ? 'fa-users-gear' : 'fa-bullhorn text-cyan-400'}`} />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white">Panel de Administración</h2>
+              <h2 className="text-sm font-bold text-white">
+                {esAdmin ? 'Panel de Administración' : 'Enviar Aviso Push Familiar'}
+              </h2>
               <p className="text-[11px] text-slate-400">
-                Gestión de usuarios y seguridad (`public.usuarios`)
+                {esAdmin
+                  ? 'Gestión de usuarios, funcionalidades y seguridad'
+                  : 'Notificación instantánea a los demás dispositivos'}
               </p>
             </div>
           </div>
@@ -276,54 +354,56 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
           </button>
         </div>
 
-        {/* Selector de Pestañas */}
-        <div className="grid grid-cols-3 gap-1.5 p-2.5 bg-slate-950/60 border-b border-slate-800/80 text-xs">
-          <button
-            type="button"
-            onClick={() => {
-              setTab('usuarios');
-              setErrorGeneral(null);
-            }}
-            className={`py-2 px-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
-              tab === 'usuarios'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <i className="fa-solid fa-users" />
-            <span>Usuarios ({usuarios.length || 2})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTab('push');
-              setErrorGeneral(null);
-            }}
-            className={`py-2 px-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
-              tab === 'push'
-                ? 'bg-cyan-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <i className="fa-solid fa-bullhorn" />
-            <span>Enviar Push</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTab('mi-password');
-              setErrorGeneral(null);
-            }}
-            className={`py-2 px-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
-              tab === 'mi-password'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <i className="fa-solid fa-key" />
-            <span>Mi Clave</span>
-          </button>
-        </div>
+        {/* Selector de Pestañas (visible para Admin) */}
+        {esAdmin && (
+          <div className="grid grid-cols-3 gap-1.5 p-2.5 bg-slate-950/60 border-b border-slate-800/80 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setTab('usuarios');
+                setErrorGeneral(null);
+              }}
+              className={`py-2 px-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                tab === 'usuarios'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <i className="fa-solid fa-users" />
+              <span>Usuarios ({usuarios.length || 2})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTab('push');
+                setErrorGeneral(null);
+              }}
+              className={`py-2 px-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                tab === 'push'
+                  ? 'bg-cyan-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <i className="fa-solid fa-bullhorn" />
+              <span>Enviar Push</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTab('mi-password');
+                setErrorGeneral(null);
+              }}
+              className={`py-2 px-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                tab === 'mi-password'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <i className="fa-solid fa-key" />
+              <span>Mi Clave</span>
+            </button>
+          </div>
+        )}
 
         {/* Cuerpo Scrollable */}
         <div className="p-4 space-y-3 overflow-y-auto flex-1 text-xs">
@@ -354,6 +434,120 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
 
           {tab === 'usuarios' ? (
             <div className="space-y-3">
+              {/* PANEL DE FUNCIONALIDADES HABILITADAS PARA USUARIOS FAMILIARES */}
+              <div className="rounded-2xl bg-slate-950/80 border border-indigo-500/30 p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <i className="fa-solid fa-sliders text-indigo-400 text-xs" />
+                    <span className="text-xs font-bold text-white">
+                      Funcionalidades habilitadas (Usuarios)
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">Rol Familiar</span>
+                </div>
+
+                <div className="space-y-2 pt-0.5">
+                  {/* Switch 1: Ver ROI */}
+                  <div className="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-2">
+                    <div>
+                      <p className="font-semibold text-slate-200 text-xs flex items-center gap-1.5">
+                        <i className="fa-solid fa-vector-square text-amber-400 text-[11px]" />
+                        Ver ROI de Cámaras
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        Muestra los recuadros Zona A/B, Ancla Techo y diferencial
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={actualizandoPermisos}
+                      onClick={() => handleToggleFuncionalidadGlobal('ver_roi', !globalVerRoi)}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                        globalVerRoi
+                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                          : 'bg-slate-800 border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      <i
+                        className={`fa-solid ${
+                          globalVerRoi ? 'fa-toggle-on text-emerald-400' : 'fa-toggle-off'
+                        }`}
+                      />
+                      <span>{globalVerRoi ? 'Activo' : 'Oculto'}</span>
+                    </button>
+                  </div>
+
+                  {/* Switch 2: Ver Estadísticas */}
+                  <div className="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-2">
+                    <div>
+                      <p className="font-semibold text-slate-200 text-xs flex items-center gap-1.5">
+                        <i className="fa-solid fa-chart-simple text-indigo-400 text-[11px]" />
+                        Ver Estadísticas Diarias
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        Muestra Aperturas hoy, Tiempo prom. y Alertas (&gt;10m)
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={actualizandoPermisos}
+                      onClick={() =>
+                        handleToggleFuncionalidadGlobal(
+                          'ver_estadisticas',
+                          !globalVerEstadisticas
+                        )
+                      }
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                        globalVerEstadisticas
+                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                          : 'bg-slate-800 border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      <i
+                        className={`fa-solid ${
+                          globalVerEstadisticas
+                            ? 'fa-toggle-on text-emerald-400'
+                            : 'fa-toggle-off'
+                        }`}
+                      />
+                      <span>{globalVerEstadisticas ? 'Activo' : 'Oculto'}</span>
+                    </button>
+                  </div>
+
+                  {/* Switch 3: Permitir enviar notificaciones Push */}
+                  <div className="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-2">
+                    <div>
+                      <p className="font-semibold text-slate-200 text-xs flex items-center gap-1.5">
+                        <i className="fa-solid fa-bullhorn text-cyan-400 text-[11px]" />
+                        Enviar Notificaciones Push
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        Permite a los usuarios enviar avisos Push personalizados
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={actualizandoPermisos}
+                      onClick={() =>
+                        handleToggleFuncionalidadGlobal('enviar_push', !globalEnviarPush)
+                      }
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                        globalEnviarPush
+                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                          : 'bg-slate-800 border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      <i
+                        className={`fa-solid ${
+                          globalEnviarPush ? 'fa-toggle-on text-emerald-400' : 'fa-toggle-off'
+                        }`}
+                      />
+                      <span>{globalEnviarPush ? 'Activo' : 'Inactivo'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {/* Barra superior: botón Nuevo Usuario */}
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
@@ -487,9 +681,48 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                             </div>
                             <p className="text-[10px] text-slate-400 mt-1">
                               {u.rol === 'admin'
-                                ? 'Acceso total: ROIs, Estadísticas, IA y Usuarios'
-                                : 'Acceso familiar: IA + Actividad Realtime (sin ROI ni estadísticas)'}
+                                ? 'Acceso total: ROIs, Estadísticas, IA, Push y Usuarios'
+                                : 'Acceso familiar: IA + Actividad Realtime'}
                             </p>
+                            {u.rol !== 'admin' && (
+                              <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleTogglePermisoIndividual(u, 'ver_roi')}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-medium border transition cursor-pointer ${
+                                    u.ver_roi
+                                      ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                                      : 'bg-slate-900 border-slate-700 text-slate-500'
+                                  }`}
+                                >
+                                  ROI: {u.ver_roi ? 'Sí' : 'No'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleTogglePermisoIndividual(u, 'ver_estadisticas')
+                                  }
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-medium border transition cursor-pointer ${
+                                    u.ver_estadisticas
+                                      ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300'
+                                      : 'bg-slate-900 border-slate-700 text-slate-500'
+                                  }`}
+                                >
+                                  Stats: {u.ver_estadisticas ? 'Sí' : 'No'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleTogglePermisoIndividual(u, 'enviar_push')}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-medium border transition cursor-pointer ${
+                                    u.enviar_push
+                                      ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300'
+                                      : 'bg-slate-900 border-slate-700 text-slate-500'
+                                  }`}
+                                >
+                                  Push: {u.enviar_push ? 'Sí' : 'No'}
+                                </button>
+                              </div>
+                            )}
                           </div>
 
                           {/* Acciones rápidas por usuario */}

@@ -131,11 +131,17 @@ async def verificar_usuario_autenticado(
             detail="Usuario deshabilitado o inexistente en la base de datos.",
         )
 
+    rol_str = str(usuario_db.get("rol") or "familiar").strip().lower()
+    es_admin = rol_str == "admin"
+
     return UsuarioAutenticado(
         id=str(usuario_db["id"]),
         username=str(usuario_db["username"]),
         nombre=str(usuario_db.get("nombre") or "Familiar"),
-        rol=str(usuario_db.get("rol") or "familiar"),
+        rol=rol_str,
+        ver_roi=es_admin or bool(usuario_db.get("ver_roi", False)),
+        ver_estadisticas=es_admin or bool(usuario_db.get("ver_estadisticas", False)),
+        enviar_push=es_admin or bool(usuario_db.get("enviar_push", False)),
     )
 
 

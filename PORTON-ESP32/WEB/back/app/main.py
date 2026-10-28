@@ -20,6 +20,7 @@ from .config import Settings, get_settings
 from .gemini_service import GeminiService
 from .push_service import PushService
 from .schemas import (
+    ActualizarFuncionalidadesRequest,
     ActualizarUsuarioRequest,
     CambiarPasswordRequest,
     ConsultaIaRequest,
@@ -177,6 +178,9 @@ async def login_usuario(
         usuario_db, req.password
     )
 
+    rol_login = str(usuario_db.get("rol") or "familiar").strip().lower()
+    es_admin_login = rol_login == "admin"
+
     return LoginResponse(
         ok=True,
         access_token=access_token,
@@ -186,7 +190,10 @@ async def login_usuario(
             id=str(usuario_db["id"]),
             username=str(usuario_db["username"]),
             nombre=str(usuario_db.get("nombre") or "Familiar"),
-            rol=str(usuario_db.get("rol") or "familiar"),
+            rol=rol_login,
+            ver_roi=es_admin_login or bool(usuario_db.get("ver_roi", False)),
+            ver_estadisticas=es_admin_login or bool(usuario_db.get("ver_estadisticas", False)),
+            enviar_push=es_admin_login or bool(usuario_db.get("enviar_push", False)),
         ),
     )
 
@@ -236,6 +243,23 @@ async def cambiar_propia_password(
 # ---------------------------------------------------------------------------
 # ADMINISTRACIÓN DE USUARIOS (Exclusivo rol `admin`)
 # ---------------------------------------------------------------------------
+def _serializar_usuario_item(u: dict[str, Any]) -> UsuarioAdminItem:
+    rol_u = str(u.get("rol") or "familiar").strip().lower()
+    es_adm = rol_u == "admin"
+    return UsuarioAdminItem(
+        id=str(u["id"]),
+        username=str(u["username"]),
+        nombre=str(u.get("nombre") or "Familiar"),
+        rol=rol_u,
+        activo=bool(u.get("activo", True)),
+        ver_roi=es_adm or bool(u.get("ver_roi", False)),
+        ver_estadisticas=es_adm or bool(u.get("ver_estadisticas", False)),
+        enviar_push=es_adm or bool(u.get("enviar_push", False)),
+        ultimo_acceso=u.get("ultimo_acceso"),
+        created_at=u.get("created_at"),
+    )
+
+
 @app.get("/api/usuarios", response_model=list[UsuarioAdminItem])
 async def listar_usuarios_admin(
     _admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
@@ -243,18 +267,7 @@ async def listar_usuarios_admin(
 ) -> list[UsuarioAdminItem]:
     supabase = SupabaseService(settings)
     filas = await supabase.listar_usuarios()
-    return [
-        UsuarioAdminItem(
-            id=str(u["id"]),
-            username=str(u["username"]),
-            nombre=str(u.get("nombre") or "Familiar"),
-            rol=str(u.get("rol") or "familiar"),
-            activo=bool(u.get("activo", True)),
-            ultimo_acceso=u.get("ultimo_acceso"),
-            created_at=u.get("created_at"),
-        )
-        for u in filas
-    ]
+    return [_serializar_usuario_item(u) for u in filas]
 
 
 @app.post("/api/usuarios", response_model=UsuarioAdminItem)
@@ -270,21 +283,45 @@ async def crear_usuario_admin(
         rol=req.rol,
         password=req.password,
         activo=req.activo,
+        ver_roi=req.ver_roi,
+        ver_estadisticas=req.ver_estadisticas,
+        enviar_push=req.enviar_push,
     )
     if not creado:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No se pudo crear el usuario (verificá que el nombre de usuario no exista ya).",
         )
-    return UsuarioAdminItem(
-        id=str(creado["id"]),
-        username=str(creado["username"]),
-        nombre=str(creado.get("nombre") or "Familiar"),
-        rol=str(creado.get("rol") or "familiar"),
-        activo=bool(creado.get("activo", True)),
-        ultimo_acceso=creado.get("ultimo_acceso"),
-        created_at=creado.get("created_at"),
-    )
+    return _serializar_usuario_item(creado)
+
+
+@app.patch("/api/usuarios/funcionalidades", response_model=list[UsuarioAdminItem])
+async def actualizar_funcionalidades_usuarios_familiares(
+    req: ActualizarFuncionalidadesRequest,
+    _admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> list[UsuarioAdminItem]:
+    """
+    Actualiza globalmente las funcionalidades habilitadas (`ver_roi`, `ver_estadisticas`, `enviar_push`)
+    para los usuarios de rol `familiar`.
+    """
+    cambios: dict[str, bool] = {}
+    if req.ver_roi is not None:
+        cambios["ver_roi"] = req.ver_roi
+    if req.ver_estadisticas is not None:
+        cambios["ver_estadisticas"] = req.ver_estadisticas
+    if req.enviar_push is not None:
+        cambios["enviar_push"] = req.enviar_push
+
+    if not cambios:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se especificaron funcionalidades para actualizar.",
+        )
+
+    supabase = SupabaseService(settings)
+    filas = await supabase.actualizar_funcionalidades_familiares(cambios)
+    return [_serializar_usuario_item(u) for u in filas]
 
 
 @app.patch("/api/usuarios/{usuario_id}", response_model=UsuarioAdminItem)
@@ -313,6 +350,12 @@ async def actualizar_usuario_admin(
         cambios["rol"] = req.rol
     if req.activo is not None:
         cambios["activo"] = req.activo
+    if req.ver_roi is not None:
+        cambios["ver_roi"] = req.ver_roi
+    if req.ver_estadisticas is not None:
+        cambios["ver_estadisticas"] = req.ver_estadisticas
+    if req.enviar_push is not None:
+        cambios["enviar_push"] = req.enviar_push
     if req.password is not None and req.password.strip():
         cambios["password"] = req.password
 
@@ -330,15 +373,7 @@ async def actualizar_usuario_admin(
             detail="No se encontró el usuario o no se pudo actualizar.",
         )
 
-    return UsuarioAdminItem(
-        id=str(actualizado["id"]),
-        username=str(actualizado["username"]),
-        nombre=str(actualizado.get("nombre") or "Familiar"),
-        rol=str(actualizado.get("rol") or "familiar"),
-        activo=bool(actualizado.get("activo", True)),
-        ultimo_acceso=actualizado.get("ultimo_acceso"),
-        created_at=actualizado.get("created_at"),
-    )
+    return _serializar_usuario_item(actualizado)
 
 
 @app.delete("/api/usuarios/{usuario_id}")
@@ -413,19 +448,46 @@ async def eliminar_usuario_admin_wrapped(
 
 @app.get("/api/estado")
 async def obtener_estado_y_eventos_autenticado(
+    dias: int = 7,
     _usuario: UsuarioAutenticado = Depends(verificar_usuario_autenticado),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
     """
-    Devuelve el estado actual y los eventos del día solo a usuarios autenticados.
+    Devuelve el estado actual y el historial de eventos de los últimos `dias` días (7 por defecto).
     """
     supabase = SupabaseService(settings)
     estado_actual = await supabase.obtener_estado_actual()
-    eventos_hoy = await supabase.listar_eventos_hoy(limite=50)
+    eventos_recientes = await supabase.listar_eventos_hoy(
+        limite=250, dias=max(1, min(dias, 90))
+    )
     return {
         "ok": True,
         "estado_actual": estado_actual,
-        "eventos_hoy": eventos_hoy,
+        "eventos_hoy": eventos_recientes,
+    }
+
+
+@app.delete("/api/eventos/{evento_id}")
+async def eliminar_evento_actividad_admin(
+    evento_id: str,
+    _admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, object]:
+    """
+    Permite al administrador eliminar una notificación o evento puntual (ej. falsa alarma)
+    de la tabla de actividad reciente (`public.eventos_porton`).
+    """
+    supabase = SupabaseService(settings)
+    eliminado = await supabase.eliminar_evento(evento_id)
+    if not eliminado:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se pudo eliminar el evento solicitado.",
+        )
+    return {
+        "ok": True,
+        "id": evento_id,
+        "mensaje": "Evento eliminado correctamente del historial.",
     }
 
 
@@ -916,12 +978,18 @@ def _describir_user_agent(ua: str | None) -> str:
 
 @app.get("/api/push/suscripciones")
 async def listar_suscripciones_push_admin(
-    _admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    usuario: UsuarioAutenticado = Depends(verificar_usuario_autenticado),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     """
-    Devuelve la cantidad y lista resumida de dispositivos con Web Push activo (solo Admin).
+    Devuelve la cantidad y lista resumida de dispositivos con Web Push activo
+    para administradores o usuarios con permiso `enviar_push`.
     """
+    if usuario.rol.strip().lower() != "admin" and not usuario.enviar_push:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenés habilitado el envío de notificaciones Push.",
+        )
     supabase = SupabaseService(settings)
     rows = await supabase.listar_suscripciones_push()
     dispositivos = [
@@ -943,17 +1011,23 @@ async def listar_suscripciones_push_admin(
 @app.post("/api/push/enviar")
 async def enviar_notificacion_push_personalizada(
     req: EnviarPushAdminRequest,
-    admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    usuario: UsuarioAutenticado = Depends(verificar_usuario_autenticado),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     """
-    Permite al Administrador enviar una notificación Push personalizada a todos los
-    dispositivos suscriptos con la PWA instalada y difundirla en tiempo real por Supabase Realtime.
+    Permite al Administrador o a usuarios con `enviar_push = True` enviar una notificación Push
+    personalizada a todos los dispositivos suscriptos con la PWA instalada y difundirla por Supabase Realtime.
     """
+    if usuario.rol.strip().lower() != "admin" and not usuario.enviar_push:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="El administrador no habilitó el envío de notificaciones Push para tu usuario.",
+        )
+
     supabase = SupabaseService(settings)
     push = PushService(settings, supabase)
 
-    titulo_limpio = req.titulo.strip() or f"📢 Aviso de {admin.nombre}"
+    titulo_limpio = req.titulo.strip() or f"📢 Aviso de {usuario.nombre}"
     mensaje_limpio = req.mensaje.strip()
     tag_unico = f"aviso-admin-{int(time.time())}"
 
@@ -971,7 +1045,7 @@ async def enviar_notificacion_push_personalizada(
         evento_registrado = await supabase.registrar_evento(
             tipo="AVISO_ADMIN",
             titulo=titulo_limpio,
-            detalle=f"{mensaje_limpio} (Enviado por @{admin.username})",
+            detalle=f"{mensaje_limpio} (Enviado por @{usuario.username})",
             metodo="ESP32_LOCAL",
             duracion_segundos=0,
             estado_texto="AVISO_ADMIN",

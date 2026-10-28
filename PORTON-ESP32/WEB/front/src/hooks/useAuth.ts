@@ -28,7 +28,9 @@ export function useAuth() {
 
       const { data, error } = await supabase
         .from('usuarios')
-        .select('id, username, nombre, rol, activo, auth_user_id, ultimo_acceso')
+        .select(
+          'id, username, nombre, rol, activo, ver_roi, ver_estadisticas, enviar_push, auth_user_id, ultimo_acceso'
+        )
         .eq('auth_user_id', authUserId)
         .eq('activo', true)
         .maybeSingle();
