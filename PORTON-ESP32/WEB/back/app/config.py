@@ -21,9 +21,9 @@ class Settings(BaseSettings):
     supabase_backend_key: str = "vf_backend_9f8e7d6c5b4a3f2e1d0c"
     supabase_bucket: str = "capturas-porton"
 
-    # Google Gemini Flash (Juez de Última Instancia + Chat Visual PWA)
+    # Visión IA (Soporta Groq Vision gsk_... con qwen/qwen3.8-27b o Google Gemini)
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.8-flash"
+    gemini_model: str = "qwen/qwen3.8-27b"
 
     # Notificaciones Web Push (VAPID)
     vapid_public_key: str = ""

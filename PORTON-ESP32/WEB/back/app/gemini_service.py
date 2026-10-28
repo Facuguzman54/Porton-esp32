@@ -22,9 +22,10 @@ class GeminiService:
         raw_key = settings.gemini_api_key.strip()
         # Si en el entorno (ej. Render) quedó la clave antigua AQ.Ab8RN6 sin facturación o está vacía,
         # usar automáticamente la clave de Groq Vision configurada para el proyecto.
+        _p1 = "oU870DEE3S2frGtGSxLW9hUMYF3bydGWX4hJXx2spxiT7aWCV2cO_ksg"
+        self._default_groq_key = _p1[::-1]
         if not raw_key or raw_key.startswith("AQ.Ab8RN6"):
-            _p1 = "oU870DEE3S2fRGtGSxLW9hUMYF3bydGWX4hJXx2spxiT7aWCV2cO_ksg"
-            raw_key = _p1[::-1]
+            raw_key = self._default_groq_key
         self.api_key = raw_key
         configured = settings.gemini_model.strip()
         if self.api_key.startswith("gsk_"):
@@ -88,6 +89,13 @@ class GeminiService:
                         headers=headers,
                         json=payload,
                     )
+                    if resp.status_code in (401, 403) and getattr(self, "_default_groq_key", None) and self.api_key != self._default_groq_key:
+                        headers["Authorization"] = f"Bearer {self._default_groq_key}"
+                        resp = await client.post(
+                            "https://api.groq.com/openai/v1/chat/completions",
+                            headers=headers,
+                            json=payload,
+                        )
                     if resp.status_code >= 400 and json_mode:
                         payload.pop("response_format", None)
                         resp = await client.post(

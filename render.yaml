@@ -21,7 +21,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-3.8-flash
+        value: qwen/qwen3.8-27b
       - key: VAPID_PUBLIC_KEY
         value: BKyhK8sJIZT94vOqSbi2IfvpkMpw5HMclxEQaeY5IB2yFAo_t5UVAvuCImLqA6RCfNQIg1e556AJMDtkaBw7zZU
       - key: VAPID_PRIVATE_KEY
