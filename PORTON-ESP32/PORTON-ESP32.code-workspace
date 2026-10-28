@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"name": "PORTON-ESP32",
+			"path": "."
+		}
+	],
+	"settings": {}
+}

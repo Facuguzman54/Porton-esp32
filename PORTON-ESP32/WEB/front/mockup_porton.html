@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vigilante Frente - PWA Mockup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #090d16; font-family: system-ui, -apple-system, sans-serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="text-slate-100 flex justify-center min-h-screen p-0 sm:p-6">
+
+    <!-- Contenedor formato Smartphone -->
+    <div class="w-full max-w-md bg-slate-900 sm:rounded-3xl sm:border sm:border-slate-800 shadow-2xl overflow-hidden flex flex-col">
+
+        <!-- BARRA SUPERIOR DE PRUEBA (Para testear los estados del Mockup) -->
+        <div class="bg-indigo-950/80 border-b border-indigo-800/50 px-4 py-2 flex items-center justify-between text-xs">
+            <span class="text-indigo-300 font-medium"><i class="fa-solid fa-sliders mr-1"></i> Vista del Mockup:</span>
+            <div class="flex gap-1.5">
+                <button onclick="cambiarEstado('CERRADO')" class="px-2 py-1 rounded bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/50">Cerrado</button>
+                <button onclick="cambiarEstado('ABIERTO')" class="px-2 py-1 rounded bg-amber-600/30 text-amber-300 border border-amber-500/40 hover:bg-amber-600/50">Abierto</button>
+                <button onclick="cambiarEstado('ALERTA')" class="px-2 py-1 rounded bg-rose-600/30 text-rose-300 border border-rose-500/40 hover:bg-rose-600/50">Alerta >10m</button>
+            </div>
+        </div>
+
+        <!-- HEADER PWA -->
+        <header class="px-5 pt-4 pb-3 flex items-center justify-between border-b border-slate-800/80">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-emerald-400">
+                    <i class="fa-solid fa-shield-halved text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-base leading-tight">Vigilante Frente</h1>
+                    <p class="text-xs text-slate-400 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        ESP32 Online · En vivo
+                    </p>
+                </div>
+            </div>
+            <!-- Botón de Suscripción Push Web (Módulo 8) -->
+            <button class="px-3 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-300 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-bell text-emerald-400"></i>
+                <span>Push Activo</span>
+            </button>
+        </header>
+
+        <!-- CONTENIDO PRINCIPAL SCROLLABLE -->
+        <main class="p-4 space-y-4 flex-1 overflow-y-auto">
+
+            <!-- 1. TARJETA DE ESTADO ACTUAL (Módulo 5 y 6) -->
+            <section id="card-estado" class="rounded-2xl p-5 bg-gradient-to-br from-emerald-950/90 to-slate-900 border border-emerald-500/40 shadow-lg transition-all duration-300">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <span id="badge-metodo" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            <i class="fa-solid fa-microchip"></i> Confirmado por ESP32 (3/3)
+                        </span>
+                        <h2 id="texto-estado" class="text-3xl font-extrabold tracking-tight text-white mt-2">
+                            PORTÓN CERRADO
+                        </h2>
+                        <p id="subtexto-estado" class="text-xs text-slate-300 mt-1">
+                            Última confirmación: Hoy, 23:31:15 hs (hace 5 seg)
+                        </p>
+                    </div>
+                    <div id="icono-estado" class="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 text-2xl">
+                        <i class="fa-solid fa-lock"></i>
+                    </div>
+                </div>
+
+                <!-- Barra de Temporizador de 10 min (Oculta cuando está cerrado) -->
+                <div id="caja-timer" class="hidden mt-4 pt-3 border-t border-white/10">
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="text-amber-200 font-medium"><i class="fa-regular fa-clock mr-1"></i> Temporizador de alerta (10 min):</span>
+                        <span id="tiempo-contador" class="font-mono font-bold text-white">03:42 / 10:00</span>
+                    </div>
+                    <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="barra-progreso" class="h-full bg-amber-400 rounded-full" style="width: 37%"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. VISOR DE ÚLTIMA CAPTURA (Módulo 6) -->
+            <section class="rounded-2xl bg-slate-800/60 border border-slate-800 overflow-hidden">
+                <div class="px-4 py-2.5 flex items-center justify-between border-b border-slate-800">
+                    <span class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                        <i class="fa-solid fa-camera text-slate-400"></i> Última imagen del ESP32
+                    </span>
+                    <span class="text-[11px] font-mono text-slate-400">2026-10-26 23:31:15</span>
+                </div>
+                <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
+                    <!-- Simulación de la vista nocturna de tu cámara XM530 -->
+                    <div class="w-full h-full bg-gradient-to-b from-neutral-800 via-neutral-900 to-neutral-950 flex flex-col justify-between p-3 relative">
+                        <div class="flex justify-between text-[11px] font-mono text-white/80">
+                            <span class="bg-black/50 px-1.5 rounded">Ancla Techo: OK (186)</span>
+                            <span class="bg-black/50 px-1.5 rounded">2026-10-26 23:31:15</span>
+                        </div>
+                        
+                        <!-- Recuadros simulados de Zonas A y B -->
+                        <div class="flex justify-end gap-4 pr-6 my-auto">
+                            <div class="w-14 h-20 border border-dashed border-cyan-400/70 bg-cyan-500/10 rounded flex items-center justify-center text-[10px] font-mono text-cyan-300">
+                                Zona A<br>48.3
+                            </div>
+                            <div class="w-24 h-20 border border-dashed border-emerald-400/70 bg-emerald-500/10 rounded flex items-center justify-center text-[10px] font-mono text-emerald-300">
+                                Zona B (Portón)<br>27.6
+                            </div>
+                        </div>
+
+                        <div class="flex justify-between items-end">
+                            <span class="text-xs font-mono font-bold text-white drop-shadow">vigilante frente</span>
+                            <span class="text-[11px] bg-slate-900/80 border border-slate-700 px-2 py-0.5 rounded text-slate-300">
+                                Diff: +20.7
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. ASISTENTE VISUAL IA INTERACTIVO (Módulo 7) -->
+            <section class="rounded-2xl bg-slate-800/60 border border-indigo-500/30 p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <div class="w-6 h-6 rounded-lg bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 text-xs">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        </div>
+                        <h3 class="text-sm font-bold text-white">Consulta Visual a la IA</h3>
+                    </div>
+                    <span class="text-[11px] text-slate-400">Bajo demanda</span>
+                </div>
+
+                <!-- Respuesta de la IA -->
+                <div id="respuesta-ia" class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 leading-relaxed">
+                    <div class="flex items-center justify-between text-[11px] text-indigo-400 font-medium mb-1">
+                        <span><i class="fa-solid fa-robot mr-1"></i> Análisis sobre captura de las 23:31 hs:</span>
+                        <span>Hace 1 min</span>
+                    </div>
+                    "El portón corredizo se encuentra <b>completamente cerrado</b>. Se observa el auto estacionado en el garaje debajo de la luminaria y no hay personas, mascotas ni objetos obstruyendo el riel."
+                </div>
+
+                <!-- Preguntas frecuentes rápidas (Chips) -->
+                <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                    <button onclick="hacerPregunta('¿Se ve el auto estacionado?')" class="shrink-0 px-2.5 py-1 rounded-full bg-slate-900 hover:bg-indigo-950 border border-slate-700 hover:border-indigo-500/50 text-[11px] text-slate-300 transition">
+                        🚗 ¿Está el auto?
+                    </button>
+                    <button onclick="hacerPregunta('¿Hay alguna mascota cerca del portón?')" class="shrink-0 px-2.5 py-1 rounded-full bg-slate-900 hover:bg-indigo-950 border border-slate-700 hover:border-indigo-500/50 text-[11px] text-slate-300 transition">
+                        🐕 ¿Se ven mascotas?
+                    </button>
+                    <button onclick="hacerPregunta('¿Hay algún objeto extraño afuera o trabando el riel?')" class="shrink-0 px-2.5 py-1 rounded-full bg-slate-900 hover:bg-indigo-950 border border-slate-700 hover:border-indigo-500/50 text-[11px] text-slate-300 transition">
+                        📦 ¿Algo en la entrada?
+                    </button>
+                </div>
+
+                <!-- Input libre -->
+                <div class="flex gap-2">
+                    <input id="input-pregunta" type="text" placeholder="Preguntale a la IA sobre la foto actual..." 
+                           class="w-full bg-slate-900 border border-slate-700 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none">
+                    <button onclick="enviarInput()" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shrink-0 transition">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </div>
+            </section>
+
+            <!-- 4. RESUMEN DIARIO Y ESTADÍSTICAS (Módulo 4 y 6) -->
+            <section class="grid grid-cols-3 gap-2.5">
+                <div class="bg-slate-800/50 border border-slate-800 rounded-xl p-3 text-center">
+                    <p class="text-[11px] text-slate-400">Aperturas hoy</p>
+                    <p class="text-xl font-bold text-white mt-0.5">4</p>
+                </div>
+                <div class="bg-slate-800/50 border border-slate-800 rounded-xl p-3 text-center">
+                    <p class="text-[11px] text-slate-400">Tiempo prom.</p>
+                    <p class="text-xl font-bold text-white mt-0.5">2.4 <span class="text-xs font-normal text-slate-400">min</span></p>
+                </div>
+                <div class="bg-slate-800/50 border border-slate-800 rounded-xl p-3 text-center">
+                    <p class="text-[11px] text-slate-400">Alertas (>10m)</p>
+                    <p class="text-xl font-bold text-emerald-400 mt-0.5">0</p>
+                </div>
+            </section>
+
+            <!-- 5. HISTORIAL DE EVENTOS EN TIEMPO REAL (Módulo 6) -->
+            <section class="rounded-2xl bg-slate-800/60 border border-slate-800 p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Actividad de Hoy</h3>
+                    <span class="text-[11px] text-emerald-400 flex items-center gap-1">
+                        <i class="fa-solid fa-bolt"></i> Supabase Realtime
+                    </span>
+                </div>
+
+                <div class="space-y-3 text-xs">
+                    <div class="flex items-center justify-between py-1.5 border-b border-slate-800/80">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                            <div>
+                                <p class="font-semibold text-slate-200">Portón Cerrado</p>
+                                <p class="text-[11px] text-slate-400">Estuvo abierto 1 min 20 seg · Local ESP32</p>
+                            </div>
+                        </div>
+                        <span class="font-mono text-slate-400">23:27 hs</span>
+                    </div>
+
+                    <div class="flex items-center justify-between py-1.5 border-b border-slate-800/80">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                            <div>
+                                <p class="font-semibold text-slate-200">Portón Abierto</p>
+                                <p class="text-[11px] text-slate-400">Confirmado (3/3 lecturas)</p>
+                            </div>
+                        </div>
+                        <span class="font-mono text-slate-400">23:25 hs</span>
+                    </div>
+
+                    <div class="flex items-center justify-between py-1.5">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-indigo-400"></span>
+                            <div>
+                                <p class="font-semibold text-slate-200">Validación por Juez IA</p>
+                                <p class="text-[11px] text-slate-400">Duda por reflejo solar resuelta → Cerrado</p>
+                            </div>
+                        </div>
+                        <span class="font-mono text-slate-400">16:40 hs</span>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script>
+        function cambiarEstado(estado) {
+            const card = document.getElementById('card-estado');
+            const texto = document.getElementById('texto-estado');
+            const subtexto = document.getElementById('subtexto-estado');
+            const icono = document.getElementById('icono-estado');
+            const badge = document.getElementById('badge-metodo');
+            const timer = document.getElementById('caja-timer');
+            const contador = document.getElementById('tiempo-contador');
+            const barra = document.getElementById('barra-progreso');
+
+            if (estado === 'CERRADO') {
+                card.className = "rounded-2xl p-5 bg-gradient-to-br from-emerald-950/90 to-slate-900 border border-emerald-500/40 shadow-lg transition-all duration-300";
+                texto.textContent = "PORTÓN CERRADO";
+                subtexto.textContent = "Última confirmación: Hoy, 23:31:15 hs (hace 5 seg)";
+                icono.className = "w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 text-2xl";
+                icono.innerHTML = '<i class="fa-solid fa-lock"></i>';
+                badge.className = "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+                badge.innerHTML = '<i class="fa-solid fa-microchip"></i> Confirmado por ESP32 (3/3)';
+                timer.classList.add('hidden');
+            } 
+            else if (estado === 'ABIERTO') {
+                card.className = "rounded-2xl p-5 bg-gradient-to-br from-amber-950/90 to-slate-900 border border-amber-500/40 shadow-lg transition-all duration-300";
+                texto.textContent = "PORTÓN ABIERTO";
+                subtexto.textContent = "Abierto desde las 23:28:00 hs";
+                icono.className = "w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 text-2xl";
+                icono.innerHTML = '<i class="fa-solid fa-lock-open"></i>';
+                badge.className = "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30";
+                badge.innerHTML = '<i class="fa-solid fa-clock"></i> Temporizador en curso';
+                timer.classList.remove('hidden');
+                contador.textContent = "03:42 / 10:00";
+                barra.className = "h-full bg-amber-400 rounded-full";
+                barra.style.width = "37%";
+            } 
+            else if (estado === 'ALERTA') {
+                card.className = "rounded-2xl p-5 bg-gradient-to-br from-rose-950/95 to-slate-900 border-2 border-rose-500 shadow-lg transition-all duration-300";
+                texto.textContent = "¡ALERTA: >10 MIN!";
+                subtexto.textContent = "Notificación Push enviada al grupo familiar (23:41 hs)";
+                icono.className = "w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 text-2xl animate-bounce";
+                icono.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+                badge.className = "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/30 text-rose-200 border border-rose-400/40";
+                badge.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Revalidado por Juez IA';
+                timer.classList.remove('hidden');
+                contador.textContent = "11:15 / 10:00 (Excedido)";
+                barra.className = "h-full bg-rose-500 rounded-full";
+                barra.style.width = "100%";
+            }
+        }
+
+        function hacerPregunta(pregunta) {
+            document.getElementById('input-pregunta').value = pregunta;
+            enviarInput();
+        }
+
+        function enviarInput() {
+            const input = document.getElementById('input-pregunta');
+            const caja = document.getElementById('respuesta-ia');
+            if (!input.value.trim()) return;
+            
+            const q = input.value;
+            input.value = '';
+            caja.innerHTML = `<span class="text-indigo-400 animate-pulse"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Consultando al modelo de visión sobre la última captura...</span>`;
+            
+            setTimeout(() => {
+                caja.innerHTML = `
+                    <div class="flex items-center justify-between text-[11px] text-indigo-400 font-medium mb-1">
+                        <span><i class="fa-solid fa-robot mr-1"></i> Respuesta a: "${q}"</span>
+                        <span>Ahora</span>
+                    </div>
+                    "Analizando la imagen de las 23:31 hs: El auto se encuentra estacionado dentro del garaje, el portón está completamente cerrado y no se observan mascotas ni obstrucciones en el sector."
+                `;
+            }, 900);
+        }
+    </script>
+</body>
+</html>

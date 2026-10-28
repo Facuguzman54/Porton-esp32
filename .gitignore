@@ -1,0 +1,20 @@
+# Secretos y variables de entorno
+PORTON-ESP32/include/secrets.h
+include/secrets.h
+**/secrets.h
+PORTON-ESP32/WEB/back/.env
+PORTON-ESP32/WEB/front/.env
+**/.env
+
+# Compilación PlatformIO y dependencias
+PORTON-ESP32/.pio/
+.pio/
+PORTON-ESP32/WEB/front/node_modules/
+PORTON-ESP32/WEB/front/dist/
+PORTON-ESP32/WEB/back/.venv/
+PORTON-ESP32/WEB/back/venv/
+**/__pycache__/
+
+# Archivos locales de agentes IA
+.agents/
+skills-lock.json

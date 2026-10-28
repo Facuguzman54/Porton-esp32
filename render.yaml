@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: vigilante-frente
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: ESP32_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        value: https://sseonoxhacutaxchbgmj.supabase.co
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_BACKEND_KEY
+        value: vf_backend_9f8e7d6c5b4a3f2e1d0c
+      - key: SUPABASE_BUCKET
+        value: capturas-porton
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: VAPID_PUBLIC_KEY
+        value: BKyhK8sJIZT94vOqSbi2IfvpkMpw5HMclxEQaeY5IB2yFAo_t5UVAvuCImLqA6RCfNQIg1e556AJMDtkaBw7zZU
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_CLAIMS_EMAIL
+        value: mailto:alertas@vigilantefrente.local
+      - key: TIEMPO_ALERTA_SEGUNDOS
+        value: "600"
+      - key: ZONA_GRIS_DIFF_MIN
+        value: "-30.0"
+      - key: ZONA_GRIS_DIFF_MAX
+        value: "-20.0"
+      - key: RETENCION_HISTORIAL_DIAS
+        value: "90"
+      - key: CORS_ORIGINS
+        value: "*"
