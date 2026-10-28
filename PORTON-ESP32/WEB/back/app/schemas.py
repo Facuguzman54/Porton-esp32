@@ -33,6 +33,43 @@ class LoginResponse(BaseModel):
     usuario: UsuarioAutenticado
 
 
+class CambiarPasswordRequest(BaseModel):
+    password_actual: str = Field(..., min_length=1, max_length=128)
+    password_nueva: str = Field(..., min_length=4, max_length=128)
+
+
+class UsuarioAdminItem(BaseModel):
+    id: str
+    username: str
+    nombre: str
+    rol: Literal["admin", "familiar"] | str
+    activo: bool
+    ultimo_acceso: str | None = None
+    created_at: str | None = None
+
+
+class CrearUsuarioRequest(BaseModel):
+    username: str = Field(..., min_length=2, max_length=80)
+    nombre: str = Field(..., min_length=1, max_length=120)
+    rol: Literal["admin", "familiar"] = "familiar"
+    password: str = Field(..., min_length=4, max_length=128)
+    activo: bool = True
+
+
+CrearUsuarioAdminRequest = CrearUsuarioRequest
+
+
+class ActualizarUsuarioRequest(BaseModel):
+    nombre: str | None = Field(default=None, min_length=1, max_length=120)
+    rol: Literal["admin", "familiar"] | None = None
+    password: str | None = Field(default=None, min_length=4, max_length=128)
+    activo: bool | None = None
+
+
+ActualizarUsuarioAdminRequest = ActualizarUsuarioRequest
+
+
+
 class TelemetriaPayload(BaseModel):
     """
     Payload enviado cada 5 segundos por el nodo Edge ESP32 a `POST /api/telemetria`.

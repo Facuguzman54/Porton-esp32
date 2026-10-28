@@ -12,9 +12,25 @@ export interface UsuarioPerfil {
   activo?: boolean;
   auth_user_id?: string | null;
   ultimo_acceso?: string | null;
+  created_at?: string | null;
 }
 
 export type UsuarioAutenticado = UsuarioPerfil;
+
+export interface CrearUsuarioPayload {
+  username: string;
+  nombre: string;
+  rol: 'admin' | 'familiar';
+  password: string;
+  activo?: boolean;
+}
+
+export interface ActualizarUsuarioPayload {
+  nombre?: string;
+  rol?: 'admin' | 'familiar';
+  password?: string;
+  activo?: boolean;
+}
 
 export interface LoginResponse {
   ok: boolean;

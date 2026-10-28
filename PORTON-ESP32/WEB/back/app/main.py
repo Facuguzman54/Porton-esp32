@@ -11,13 +11,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .auth_service import AuthService, verificar_usuario_autenticado
+from .auth_service import (
+    AuthService,
+    verificar_admin_autenticado,
+    verificar_usuario_autenticado,
+)
 from .config import Settings, get_settings
 from .gemini_service import GeminiService
 from .push_service import PushService
 from .schemas import (
+    ActualizarUsuarioRequest,
+    CambiarPasswordRequest,
     ConsultaIaRequest,
     ConsultaIaResponse,
+    CrearUsuarioRequest,
     EstadoPorton,
     LoginRequest,
     LoginResponse,
@@ -25,6 +32,7 @@ from .schemas import (
     PushSubscriptionPayload,
     TelemetriaPayload,
     TelemetriaResponse,
+    UsuarioAdminItem,
     UsuarioAutenticado,
 )
 from .supabase_service import SupabaseService
@@ -187,6 +195,219 @@ async def obtener_sesion_actual(
     usuario: UsuarioAutenticado = Depends(verificar_usuario_autenticado),
 ) -> UsuarioAutenticado:
     return usuario
+
+
+@app.post("/api/auth/cambiar-password")
+async def cambiar_propia_password(
+    req: CambiarPasswordRequest,
+    usuario: UsuarioAutenticado = Depends(verificar_usuario_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, object]:
+    """
+    Permite al usuario autenticado (ej. admin) cambiar su propia contraseña
+    verificando primero la contraseña actual contra `public.usuarios`.
+    """
+    supabase = SupabaseService(settings)
+    verificado = await supabase.verificar_credenciales_db(
+        usuario.username, req.password_actual
+    )
+    if not verificado:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contraseña actual ingresada es incorrecta.",
+        )
+
+    actualizado = await supabase.actualizar_usuario(
+        usuario.id, {"password": req.password_nueva}
+    )
+    if not actualizado:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No se pudo actualizar la contraseña en la base de datos.",
+        )
+
+    return {
+        "ok": True,
+        "mensaje": "Contraseña actualizada correctamente.",
+    }
+
+
+# ---------------------------------------------------------------------------
+# ADMINISTRACIÓN DE USUARIOS (Exclusivo rol `admin`)
+# ---------------------------------------------------------------------------
+@app.get("/api/usuarios", response_model=list[UsuarioAdminItem])
+async def listar_usuarios_admin(
+    _admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> list[UsuarioAdminItem]:
+    supabase = SupabaseService(settings)
+    filas = await supabase.listar_usuarios()
+    return [
+        UsuarioAdminItem(
+            id=str(u["id"]),
+            username=str(u["username"]),
+            nombre=str(u.get("nombre") or "Familiar"),
+            rol=str(u.get("rol") or "familiar"),
+            activo=bool(u.get("activo", True)),
+            ultimo_acceso=u.get("ultimo_acceso"),
+            created_at=u.get("created_at"),
+        )
+        for u in filas
+    ]
+
+
+@app.post("/api/usuarios", response_model=UsuarioAdminItem)
+async def crear_usuario_admin(
+    req: CrearUsuarioRequest,
+    _admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> UsuarioAdminItem:
+    supabase = SupabaseService(settings)
+    creado = await supabase.crear_usuario(
+        username=req.username,
+        nombre=req.nombre,
+        rol=req.rol,
+        password=req.password,
+        activo=req.activo,
+    )
+    if not creado:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se pudo crear el usuario (verificá que el nombre de usuario no exista ya).",
+        )
+    return UsuarioAdminItem(
+        id=str(creado["id"]),
+        username=str(creado["username"]),
+        nombre=str(creado.get("nombre") or "Familiar"),
+        rol=str(creado.get("rol") or "familiar"),
+        activo=bool(creado.get("activo", True)),
+        ultimo_acceso=creado.get("ultimo_acceso"),
+        created_at=creado.get("created_at"),
+    )
+
+
+@app.patch("/api/usuarios/{usuario_id}", response_model=UsuarioAdminItem)
+async def actualizar_usuario_admin(
+    usuario_id: str,
+    req: ActualizarUsuarioRequest,
+    admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> UsuarioAdminItem:
+    if usuario_id == admin.id:
+        if req.activo is False:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No podés desactivar tu propia cuenta de administrador.",
+            )
+        if req.rol is not None and req.rol != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No podés quitarte el rol de administrador a vos mismo.",
+            )
+
+    cambios: dict[str, Any] = {}
+    if req.nombre is not None:
+        cambios["nombre"] = req.nombre.strip()
+    if req.rol is not None:
+        cambios["rol"] = req.rol
+    if req.activo is not None:
+        cambios["activo"] = req.activo
+    if req.password is not None and req.password.strip():
+        cambios["password"] = req.password
+
+    if not cambios:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se enviaron cambios para actualizar.",
+        )
+
+    supabase = SupabaseService(settings)
+    actualizado = await supabase.actualizar_usuario(usuario_id, cambios)
+    if not actualizado:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontró el usuario o no se pudo actualizar.",
+        )
+
+    return UsuarioAdminItem(
+        id=str(actualizado["id"]),
+        username=str(actualizado["username"]),
+        nombre=str(actualizado.get("nombre") or "Familiar"),
+        rol=str(actualizado.get("rol") or "familiar"),
+        activo=bool(actualizado.get("activo", True)),
+        ultimo_acceso=actualizado.get("ultimo_acceso"),
+        created_at=actualizado.get("created_at"),
+    )
+
+
+@app.delete("/api/usuarios/{usuario_id}")
+async def eliminar_usuario_admin(
+    usuario_id: str,
+    admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, object]:
+    if usuario_id == admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No podés eliminar tu propia cuenta de administrador.",
+        )
+
+    supabase = SupabaseService(settings)
+    eliminado = await supabase.eliminar_usuario(usuario_id)
+    if not eliminado:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se pudo eliminar el usuario solicitado.",
+        )
+
+    return {
+        "ok": True,
+        "mensaje": "Usuario eliminado correctamente.",
+    }
+
+
+@app.get("/api/admin/usuarios")
+async def listar_usuarios_admin_wrapped(
+    admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, object]:
+    items = await listar_usuarios_admin(_admin=admin, settings=settings)
+    return {"ok": True, "usuarios": [i.model_dump() for i in items]}
+
+
+@app.post("/api/admin/usuarios")
+async def crear_usuario_admin_wrapped(
+    req: CrearUsuarioRequest,
+    admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, object]:
+    item = await crear_usuario_admin(req=req, _admin=admin, settings=settings)
+    return {"ok": True, "usuario": item.model_dump()}
+
+
+@app.patch("/api/admin/usuarios/{usuario_id}")
+async def actualizar_usuario_admin_wrapped(
+    usuario_id: str,
+    req: ActualizarUsuarioRequest,
+    admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, object]:
+    item = await actualizar_usuario_admin(
+        usuario_id=usuario_id, req=req, admin=admin, settings=settings
+    )
+    return {"ok": True, "usuario": item.model_dump()}
+
+
+@app.delete("/api/admin/usuarios/{usuario_id}")
+async def eliminar_usuario_admin_wrapped(
+    usuario_id: str,
+    admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, object]:
+    return await eliminar_usuario_admin(
+        usuario_id=usuario_id, admin=admin, settings=settings
+    )
+
 
 
 @app.get("/api/estado")

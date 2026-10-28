@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { AdminUsersModal } from './components/AdminUsersModal';
 import { AiAssistant } from './components/AiAssistant';
 import { CameraViewer } from './components/CameraViewer';
 import { DailyStats } from './components/DailyStats';
@@ -13,6 +14,8 @@ export const App: React.FC = () => {
   const { usuario, cargandoAuth, errorAuth, iniciarSesion, cerrarSesion } = useAuth();
   const { estadoActual, eventosHoy, estadisticas, realtimeConnected, esp32Online } =
     usePortonRealtime(Boolean(usuario));
+
+  const [modalAdminAbierto, setModalAdminAbierto] = useState<boolean>(false);
 
   if (cargandoAuth) {
     return (
@@ -31,6 +34,8 @@ export const App: React.FC = () => {
     return <LoginCard onLogin={iniciarSesion} errorAuth={errorAuth} />;
   }
 
+  const esAdmin = String(usuario.rol || '').trim().toLowerCase() === 'admin';
+
   return (
     <div className="text-slate-100 flex justify-center min-h-screen p-0 sm:p-6">
       {/* Contenedor formato Smartphone */}
@@ -40,6 +45,8 @@ export const App: React.FC = () => {
           esp32Online={esp32Online}
           realtimeConnected={realtimeConnected}
           usuario={usuario}
+          esAdmin={esAdmin}
+          onAbrirAdminPanel={() => setModalAdminAbierto(true)}
           onLogout={cerrarSesion}
         />
 
@@ -48,19 +55,28 @@ export const App: React.FC = () => {
           {/* 1. TARJETA DE ESTADO ACTUAL */}
           <StatusCard estadoActual={estadoActual} />
 
-          {/* 2. VISOR DE ÚLTIMA CAPTURA CON ROIs 640x360 */}
-          <CameraViewer estadoActual={estadoActual} />
+          {/* 2. VISOR DE ÚLTIMA CAPTURA (ROIs visibles solo para rol admin) */}
+          <CameraViewer estadoActual={estadoActual} permitirRoi={esAdmin} />
 
-          {/* 3. ASISTENTE VISUAL IA INTERACTIVO */}
+          {/* 3. ASISTENTE VISUAL IA INTERACTIVO (Permitido para Familiar y Admin) */}
           <AiAssistant ultimaCapturaIso={estadoActual.updated_at} />
 
-          {/* 4. RESUMEN DIARIO Y ESTADÍSTICAS */}
-          <DailyStats estadisticas={estadisticas} />
+          {/* 4. RESUMEN DIARIO Y ESTADÍSTICAS (Exclusivo para rol admin) */}
+          {esAdmin && <DailyStats estadisticas={estadisticas} />}
 
-          {/* 5. HISTORIAL DE EVENTOS EN TIEMPO REAL */}
+          {/* 5. HISTORIAL DE EVENTOS EN TIEMPO REAL (Permitido para Familiar y Admin) */}
           <EventHistory eventos={eventosHoy} realtimeConnected={realtimeConnected} />
         </main>
       </div>
+
+      {/* MODAL DE ADMINISTRACIÓN DE USUARIOS Y CAMBIO DE CONTRASEÑA ADMIN */}
+      {esAdmin && (
+        <AdminUsersModal
+          usuarioActual={usuario}
+          abierto={modalAdminAbierto}
+          onCerrar={() => setModalAdminAbierto(false)}
+        />
+      )}
     </div>
   );
 };

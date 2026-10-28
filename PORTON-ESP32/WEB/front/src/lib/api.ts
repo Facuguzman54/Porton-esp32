@@ -1,5 +1,7 @@
 import type {
+  ActualizarUsuarioPayload,
   ConsultaIaResponse,
+  CrearUsuarioPayload,
   EstadoBackendResponse,
   LoginResponse,
   UsuarioPerfil,
@@ -105,6 +107,120 @@ export async function obtenerSesionActualBackend(): Promise<UsuarioPerfil> {
 }
 
 /**
+ * Permite al usuario autenticado (ej. admin) cambiar su propia contraseña
+ * validando primero su contraseña actual (`POST /api/auth/cambiar-password`).
+ */
+export async function cambiarMiPassword(
+  passwordActualOrObj: string | { password_actual: string; password_nueva: string },
+  passwordNuevaArg?: string
+): Promise<{ ok: boolean; mensaje: string }> {
+  const bodyPayload =
+    typeof passwordActualOrObj === 'string'
+      ? {
+          password_actual: passwordActualOrObj,
+          password_nueva: passwordNuevaArg || '',
+        }
+      : passwordActualOrObj;
+
+  const response = await fetch(`${API_BASE_URL}/api/auth/cambiar-password`, {
+    method: 'POST',
+    headers: buildAuthHeaders({
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify(bodyPayload),
+  });
+
+  if (!response.ok) {
+    const msg = await parseErrorMessage(
+      response,
+      'No se pudo actualizar la contraseña. Verificá tu contraseña actual.'
+    );
+    throw new Error(msg);
+  }
+
+  return (await response.json()) as { ok: boolean; mensaje: string };
+}
+
+/**
+ * Lista todos los usuarios registrados en `public.usuarios` (Exclusivo rol `admin`).
+ */
+export async function listarUsuariosAdmin(): Promise<UsuarioPerfil[]> {
+  const response = await fetch(`${API_BASE_URL}/api/usuarios`, {
+    method: 'GET',
+    headers: buildAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const msg = await parseErrorMessage(response, 'No se pudo cargar la lista de usuarios.');
+    throw new Error(msg);
+  }
+
+  return (await response.json()) as UsuarioPerfil[];
+}
+
+/**
+ * Crea un nuevo usuario familiar o admin en `public.usuarios` (Exclusivo rol `admin`).
+ */
+export async function crearUsuarioAdmin(payload: CrearUsuarioPayload): Promise<UsuarioPerfil> {
+  const response = await fetch(`${API_BASE_URL}/api/usuarios`, {
+    method: 'POST',
+    headers: buildAuthHeaders({
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const msg = await parseErrorMessage(response, 'No se pudo crear el usuario.');
+    throw new Error(msg);
+  }
+
+  return (await response.json()) as UsuarioPerfil;
+}
+
+/**
+ * Actualiza datos, rol, estado activo o contraseña de un usuario (Exclusivo rol `admin`).
+ */
+export async function actualizarUsuarioAdmin(
+  usuarioId: string,
+  payload: ActualizarUsuarioPayload
+): Promise<UsuarioPerfil> {
+  const response = await fetch(`${API_BASE_URL}/api/usuarios/${encodeURIComponent(usuarioId)}`, {
+    method: 'PATCH',
+    headers: buildAuthHeaders({
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const msg = await parseErrorMessage(response, 'No se pudo actualizar el usuario.');
+    throw new Error(msg);
+  }
+
+  return (await response.json()) as UsuarioPerfil;
+}
+
+/**
+ * Elimina un usuario de `public.usuarios` (Exclusivo rol `admin`).
+ */
+export async function eliminarUsuarioAdmin(
+  usuarioId: string
+): Promise<{ ok: boolean; mensaje: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/usuarios/${encodeURIComponent(usuarioId)}`, {
+    method: 'DELETE',
+    headers: buildAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const msg = await parseErrorMessage(response, 'No se pudo eliminar el usuario.');
+    throw new Error(msg);
+  }
+
+  return (await response.json()) as { ok: boolean; mensaje: string };
+}
+
+/**
  * Obtiene `{ estado_actual, eventos_hoy }` desde `GET /api/estado` (requiere Bearer token).
  */
 export async function obtenerEstadoYEventosBackend(): Promise<EstadoBackendResponse> {
@@ -135,7 +251,6 @@ export function getCapturaAutenticadaUrl(
   const cacheBuster = updatedAtIso ? new Date(updatedAtIso).getTime() : Date.now();
   const token = getStoredAccessToken();
 
-  // Si el backend está configurado o la URL apunta al endpoint del backend (/api/captura/ultima)
   const usaEndpointBackend =
     !customUrl || customUrl.startsWith('/api/') || customUrl.includes('/api/captura/ultima');
 

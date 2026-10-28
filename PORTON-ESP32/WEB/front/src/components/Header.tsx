@@ -6,6 +6,8 @@ interface HeaderProps {
   esp32Online: boolean;
   realtimeConnected: boolean;
   usuario: UsuarioPerfil;
+  esAdmin: boolean;
+  onAbrirAdminPanel: () => void;
   onLogout: () => void;
 }
 
@@ -13,6 +15,8 @@ export const Header: React.FC<HeaderProps> = ({
   esp32Online,
   realtimeConnected,
   usuario,
+  esAdmin,
+  onAbrirAdminPanel,
   onLogout,
 }) => {
   const [pushActivo, setPushActivo] = useState<boolean>(false);
@@ -49,10 +53,21 @@ export const Header: React.FC<HeaderProps> = ({
             <i className="fa-solid fa-shield-halved text-lg" />
           </div>
           <div className="min-w-0">
-            <h1 className="font-bold text-base leading-tight text-white truncate">
-              Vigilante Frente
-            </h1>
-            <p className="text-xs text-slate-400 flex items-center gap-1.5 truncate">
+            <div className="flex items-center gap-1.5">
+              <h1 className="font-bold text-base leading-tight text-white truncate">
+                Vigilante Frente
+              </h1>
+              <span
+                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${
+                  esAdmin
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                    : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+                }`}
+              >
+                {esAdmin ? 'Admin' : usuario.nombre}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 flex items-center gap-1.5 truncate mt-0.5">
               <span
                 className={`w-2 h-2 rounded-full shrink-0 ${
                   esp32Online
@@ -69,8 +84,20 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Acciones derechas: Push Web + Cerrar sesión */}
+        {/* Acciones derechas: Admin Usuarios (solo admin) + Push Web + Cerrar sesión */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {esAdmin && (
+            <button
+              type="button"
+              onClick={onAbrirAdminPanel}
+              title="Administrar usuarios y cambiar contraseña de administrador"
+              className="px-2.5 py-1.5 rounded-full bg-indigo-950/70 hover:bg-indigo-900/80 border border-indigo-500/40 text-xs font-medium text-indigo-300 flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <i className="fa-solid fa-users-gear text-indigo-400" />
+              <span className="hidden sm:inline">Usuarios</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleTogglePush}
@@ -101,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onLogout}
-            title={`Conectado como ${usuario.nombre} (${usuario.username}) · Click para cerrar sesión`}
+            title={`Conectado como ${usuario.nombre} (@${usuario.username}) · Click para cerrar sesión`}
             className="w-8 h-8 rounded-full bg-slate-800 hover:bg-rose-950/80 border border-slate-700 hover:border-rose-500/50 text-slate-400 hover:text-rose-300 flex items-center justify-center text-xs transition cursor-pointer"
           >
             <i className="fa-solid fa-right-from-bracket" />

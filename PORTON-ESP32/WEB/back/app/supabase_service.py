@@ -135,7 +135,7 @@ class SupabaseService:
         return None, None
 
     async def obtener_usuario_por_id(self, user_id: str) -> dict[str, Any] | None:
-        url = f"{self.rest_url}/usuarios?id=eq.{user_id}&select=id,username,nombre,rol,activo"
+        url = f"{self.rest_url}/usuarios?id=eq.{user_id}&select=id,username,nombre,rol,activo,auth_user_id,ultimo_acceso,created_at"
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get(url, headers=self._headers())
@@ -145,6 +145,101 @@ class SupabaseService:
         except Exception as exc:
             logger.warning("Error consultando usuario %s: %s", user_id, exc)
             return None
+
+    async def listar_usuarios(self) -> list[dict[str, Any]]:
+        url = (
+            f"{self.rest_url}/usuarios"
+            "?select=id,username,nombre,rol,activo,ultimo_acceso,created_at"
+            "&order=created_at.asc"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                resp = await client.get(url, headers=self._headers())
+                resp.raise_for_status()
+                return resp.json()
+        except Exception as exc:
+            logger.error("Error listando usuarios en Supabase: %s", exc)
+            return []
+
+    async def crear_usuario(
+        self,
+        username: str,
+        nombre: str,
+        rol: str,
+        password: str,
+        activo: bool = True,
+    ) -> dict[str, Any] | None:
+        url = f"{self.rest_url}/usuarios"
+        headers = self._headers(
+            {
+                "Content-Type": "application/json",
+                "Prefer": "return=representation",
+            }
+        )
+        body = {
+            "username": username.strip().lower(),
+            "nombre": nombre.strip(),
+            "rol": rol.strip().lower(),
+            "password": password,
+            "activo": activo,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                resp = await client.post(url, headers=headers, json=body)
+                resp.raise_for_status()
+                rows = resp.json()
+                return rows[0] if rows else None
+        except Exception as exc:
+            logger.error("Error creando usuario %s en Supabase: %s", username, exc)
+            return None
+
+    async def actualizar_usuario(
+        self, user_id: str, cambios: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        actual = await self.obtener_usuario_por_id(user_id)
+        if not actual:
+            return None
+
+        # Incluir siempre `username` para que el trigger `trg_hash_usuario_password`
+        # sincronice el estado, rol, nombre y contraseña con `auth.users`.
+        payload = {"username": actual["username"], **cambios}
+        url = f"{self.rest_url}/usuarios?id=eq.{user_id}"
+        headers = self._headers(
+            {
+                "Content-Type": "application/json",
+                "Prefer": "return=representation",
+            }
+        )
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                resp = await client.patch(url, headers=headers, json=payload)
+                resp.raise_for_status()
+                rows = resp.json()
+                return rows[0] if rows else None
+        except Exception as exc:
+            logger.error("Error actualizando usuario %s en Supabase: %s", user_id, exc)
+            return None
+
+    async def eliminar_usuario(self, user_id: str) -> bool:
+        actual = await self.obtener_usuario_por_id(user_id)
+        if not actual:
+            return False
+
+        url = f"{self.rest_url}/usuarios?id=eq.{user_id}"
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                resp = await client.delete(url, headers=self._headers())
+                resp.raise_for_status()
+                auth_uid = actual.get("auth_user_id")
+                if auth_uid:
+                    await client.delete(
+                        f"{self.auth_url}/admin/users/{auth_uid}",
+                        headers=self._headers(),
+                    )
+                return True
+        except Exception as exc:
+            logger.error("Error eliminando usuario %s en Supabase: %s", user_id, exc)
+            return False
 
     async def obtener_estado_actual(self) -> dict[str, Any] | None:
         url = f"{self.rest_url}/estado_actual?id=eq.1&select=*"

@@ -137,3 +137,16 @@ async def verificar_usuario_autenticado(
         nombre=str(usuario_db.get("nombre") or "Familiar"),
         rol=str(usuario_db.get("rol") or "familiar"),
     )
+
+
+async def verificar_admin_autenticado(
+    usuario: UsuarioAutenticado = Depends(verificar_usuario_autenticado),
+) -> UsuarioAutenticado:
+    """Dependencia que exige que el usuario autenticado tenga rol 'admin'."""
+    if usuario.rol.strip().lower() != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso restringido a administradores.",
+        )
+    return usuario
+

@@ -4,6 +4,7 @@ import { CALIBRACION_CAMARA, type EstadoActualRow } from '../types/porton';
 
 interface CameraViewerProps {
   estadoActual: EstadoActualRow;
+  permitirRoi: boolean;
 }
 
 function roiToPercentStyle(roi: { x1: number; y1: number; x2: number; y2: number }) {
@@ -32,7 +33,7 @@ function formatearTimestampCaptura(isoDate: string | null): string {
   return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 }
 
-export const CameraViewer: React.FC<CameraViewerProps> = ({ estadoActual }) => {
+export const CameraViewer: React.FC<CameraViewerProps> = ({ estadoActual, permitirRoi }) => {
   const [mostrarHud, setMostrarHud] = useState<boolean>(true);
   const [imgError, setImgError] = useState<boolean>(false);
 
@@ -50,6 +51,7 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({ estadoActual }) => {
   const timestampFormateado = formatearTimestampCaptura(estadoActual.updated_at);
   const diffConSigno = `${diff_porton >= 0 ? '+' : ''}${diff_porton.toFixed(1)}`;
   const techoOk = estado !== 'CAMARA_MOVIDA';
+  const verRoi = permitirRoi && mostrarHud;
 
   return (
     <section className="rounded-2xl bg-slate-800/60 border border-slate-800 overflow-hidden">
@@ -61,19 +63,21 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({ estadoActual }) => {
 
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-mono text-slate-400">{timestampFormateado}</span>
-          <button
-            type="button"
-            onClick={() => setMostrarHud((prev) => !prev)}
-            title={mostrarHud ? 'Ocultar HUD técnico de ROIs' : 'Mostrar HUD técnico de ROIs'}
-            className={`px-2 py-0.5 rounded text-[10px] font-mono border transition cursor-pointer ${
-              mostrarHud
-                ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40 hover:bg-cyan-500/25'
-                : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-slate-200'
-            }`}
-          >
-            <i className="fa-solid fa-vector-square mr-1" />
-            ROIs
-          </button>
+          {permitirRoi && (
+            <button
+              type="button"
+              onClick={() => setMostrarHud((prev) => !prev)}
+              title={mostrarHud ? 'Ocultar HUD técnico de ROIs' : 'Mostrar HUD técnico de ROIs'}
+              className={`px-2 py-0.5 rounded text-[10px] font-mono border transition cursor-pointer ${
+                mostrarHud
+                  ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40 hover:bg-cyan-500/25'
+                  : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-slate-200'
+              }`}
+            >
+              <i className="fa-solid fa-vector-square mr-1" />
+              ROIs
+            </button>
+          )}
         </div>
       </div>
 
@@ -92,19 +96,23 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({ estadoActual }) => {
           <div className="w-full h-full bg-gradient-to-b from-neutral-800 via-neutral-900 to-neutral-950" />
         )}
 
-        {/* Capa de metadatos OSD de la cámara (siempre visible como en el mockup) */}
+        {/* Capa de metadatos OSD de la cámara */}
         <div className="absolute inset-0 flex flex-col justify-between p-3 pointer-events-none">
           <div className="flex justify-between text-[11px] font-mono text-white/80">
-            <span
-              className={`px-1.5 py-0.5 rounded backdrop-blur-xs ${
-                techoOk
-                  ? 'bg-black/60 text-white/85'
-                  : 'bg-rose-950/85 text-rose-200 border border-rose-500/50'
-              }`}
-            >
-              Ancla Techo: {techoOk ? 'OK' : 'DESVIADA'} ({Math.round(brillo_techo)}) ·{' '}
-              {es_de_dia ? 'Día' : 'Noche'}
-            </span>
+            {verRoi ? (
+              <span
+                className={`px-1.5 py-0.5 rounded backdrop-blur-xs ${
+                  techoOk
+                    ? 'bg-black/60 text-white/85'
+                    : 'bg-rose-950/85 text-rose-200 border border-rose-500/50'
+                }`}
+              >
+                Ancla Techo: {techoOk ? 'OK' : 'DESVIADA'} ({Math.round(brillo_techo)}) ·{' '}
+                {es_de_dia ? 'Día' : 'Noche'}
+              </span>
+            ) : (
+              <span />
+            )}
             <span className="bg-black/60 px-1.5 py-0.5 rounded backdrop-blur-xs">
               {timestampFormateado}
             </span>
@@ -114,14 +122,16 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({ estadoActual }) => {
             <span className="text-xs font-mono font-bold text-white drop-shadow">
               vigilante frente
             </span>
-            <span className="text-[11px] font-mono bg-slate-900/85 border border-slate-700 px-2 py-0.5 rounded text-slate-300">
-              Diff: {diffConSigno}
-            </span>
+            {verRoi && (
+              <span className="text-[11px] font-mono bg-slate-900/85 border border-slate-700 px-2 py-0.5 rounded text-slate-300">
+                Diff: {diffConSigno}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Superposición de ROIs calibradas a escala exacta 640x360 */}
-        {mostrarHud && (
+        {/* Superposición de ROIs calibradas a escala exacta 640x360 (Exclusivo rol admin) */}
+        {verRoi && (
           <div className="absolute inset-0 pointer-events-none">
             {/* Ancla Principal (Techo de Madera: X 15..130, Y 5..45) */}
             <div
