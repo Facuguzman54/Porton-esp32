@@ -423,20 +423,32 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
 
                           {/* Acciones rápidas por usuario */}
                           <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setUsuarioEditandoPassId(editandoPass ? null : u.id);
-                                setPasswordResetValor('');
-                              }}
-                              title="Cambiar contraseña de este usuario"
-                              className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[11px] transition cursor-pointer"
-                            >
-                              <i className="fa-solid fa-key" />
-                            </button>
-
-                            {!esMiCuenta && (
+                            {esMiCuenta ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTab('mi-password');
+                                  setErrorGeneral(null);
+                                }}
+                                title="Ir a Mi Clave Admin para cambiar tu propia contraseña"
+                                className="px-2.5 py-1 rounded-lg bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-500/40 text-emerald-300 text-[10px] font-semibold flex items-center gap-1 transition cursor-pointer"
+                              >
+                                <i className="fa-solid fa-key" />
+                                <span>Mi Clave</span>
+                              </button>
+                            ) : (
                               <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUsuarioEditandoPassId(editandoPass ? null : u.id);
+                                    setPasswordResetValor('');
+                                  }}
+                                  title="Asignar nueva contraseña a este usuario"
+                                  className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[11px] transition cursor-pointer"
+                                >
+                                  <i className="fa-solid fa-key" />
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => handleToggleRol(u)}
@@ -472,8 +484,8 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                           </div>
                         </div>
 
-                        {/* Caja inline para asignar nueva contraseña a este usuario */}
-                        {editandoPass && (
+                        {/* Caja inline para asignar nueva contraseña a usuarios familiares */}
+                        {!esMiCuenta && editandoPass && (
                           <div className="mt-2.5 pt-2.5 border-t border-slate-700/80 flex items-center gap-2">
                             <input
                               type="text"
