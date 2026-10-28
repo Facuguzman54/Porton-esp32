@@ -210,6 +210,13 @@ export function usePortonRealtime(autenticado: boolean) {
     setEventosHoy((prev) => prev.filter((e) => String(e.id) !== String(eventoId)));
   };
 
+  const actualizarTiempoAlertaLocal = (segundos: number) => {
+    setEstadoActual((prev) => ({
+      ...prev,
+      tiempo_alerta_segundos: segundos,
+    }));
+  };
+
   return {
     estadoActual,
     eventosHoy,
@@ -219,5 +226,6 @@ export function usePortonRealtime(autenticado: boolean) {
     avisoReciente,
     cerrarAvisoReciente: () => setAvisoReciente(null),
     eliminarEventoLocal,
+    actualizarTiempoAlertaLocal,
   };
 }

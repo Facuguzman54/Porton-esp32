@@ -60,7 +60,16 @@ export const StatusCard: React.FC<StatusCardProps> = ({ estadoActual }) => {
       ? Math.max(0, Math.floor((ahoraMs - new Date(abierto_desde).getTime()) / 1000))
       : 0;
 
-  const limiteSeg = CALIBRACION_CAMARA.TIEMPO_ALERTA_SEGUNDOS;
+  const limiteSeg =
+    estadoActual.tiempo_alerta_segundos && estadoActual.tiempo_alerta_segundos >= 15
+      ? estadoActual.tiempo_alerta_segundos
+      : CALIBRACION_CAMARA.TIEMPO_ALERTA_SEGUNDOS;
+  const etiquetaUmbral =
+    limiteSeg >= 60 && limiteSeg % 60 === 0
+      ? `${Math.floor(limiteSeg / 60)} min`
+      : limiteSeg >= 60
+      ? `${Math.floor(limiteSeg / 60)}m ${limiteSeg % 60}s`
+      : `${limiteSeg} seg`;
   const tiempoExcedido =
     estado === 'ABIERTO' && (segundosAbierto >= limiteSeg || alerta_enviada);
 
@@ -105,7 +114,7 @@ export const StatusCard: React.FC<StatusCardProps> = ({ estadoActual }) => {
     badgeIcon = 'fa-wand-magic-sparkles';
     badgeTexto =
       metodo_confirmacion === 'JUEZ_IA' ? 'Revalidado por Juez IA' : 'Tiempo límite superado';
-    titulo = '¡ALERTA: >10 MIN!';
+    titulo = `¡ALERTA: >${etiquetaUmbral.toUpperCase()}!`;
     subtexto = alerta_enviada
       ? `Notificación Push enviada al grupo familiar (${formatearHoraCorta(updated_at)} hs)`
       : `Abierto desde las ${formatearHoraCorta(abierto_desde)} hs`;
@@ -141,15 +150,15 @@ export const StatusCard: React.FC<StatusCardProps> = ({ estadoActual }) => {
         </div>
       </div>
 
-      {/* Barra de Temporizador de 10 min (Visible cuando el portón está ABIERTO) */}
+      {/* Barra de Temporizador configurable (Visible cuando el portón está ABIERTO) */}
       {estado === 'ABIERTO' && (
         <div className="mt-4 pt-3 border-t border-white/10">
           <div className="flex justify-between text-xs mb-1.5">
             <span className="text-amber-200 font-medium">
-              <i className="fa-regular fa-clock mr-1" /> Temporizador de alerta (10 min):
+              <i className="fa-regular fa-clock mr-1" /> Temporizador de alerta ({etiquetaUmbral}):
             </span>
             <span className="font-mono font-bold text-white">
-              {formatearMinutosSegundos(segundosAbierto)} / 10:00
+              {formatearMinutosSegundos(segundosAbierto)} / {formatearMinutosSegundos(limiteSeg)}
               {tiempoExcedido ? ' (Excedido)' : ''}
             </span>
           </div>

@@ -297,6 +297,39 @@ export async function eliminarEventoActividadAdmin(
 }
 
 /**
+ * Configura el tiempo (en segundos) en que el temporizador dispara la alarma de portón abierto (Exclusivo rol `admin`).
+ */
+export async function actualizarTemporizadorAlertaAdmin(
+  tiempoAlertaSegundos: number
+): Promise<{
+  ok: boolean;
+  tiempo_alerta_segundos: number;
+  mensaje: string;
+}> {
+  const response = await fetch(`${API_BASE_URL}/api/configuracion/temporizador`, {
+    method: 'PATCH',
+    headers: buildAuthHeaders({
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify({ tiempo_alerta_segundos: tiempoAlertaSegundos }),
+  });
+
+  if (!response.ok) {
+    const msg = await parseErrorMessage(
+      response,
+      'No se pudo actualizar el tiempo del temporizador de alarma.'
+    );
+    throw new Error(msg);
+  }
+
+  return (await response.json()) as {
+    ok: boolean;
+    tiempo_alerta_segundos: number;
+    mensaje: string;
+  };
+}
+
+/**
  * Construye la URL autenticada de la última captura JPEG (`GET /api/captura/ultima?token=...&t=...`)
  * servida desde la caché en RAM del backend FastAPI, con fallback a Supabase Storage.
  */

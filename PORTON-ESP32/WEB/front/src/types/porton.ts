@@ -68,6 +68,7 @@ export interface EstadoActualRow {
   es_de_dia: boolean;
   abierto_desde: string | null;
   alerta_enviada: boolean;
+  tiempo_alerta_segundos?: number;
   ultima_captura_url: string | null;
   camara_online: boolean;
   updated_at: string;
@@ -136,8 +137,8 @@ export const CALIBRACION_CAMARA = {
   WIDTH: 640,
   HEIGHT: 360,
   UMBRAL_DIFF_PORTON: -25.0,
-  UMBRAL_TECHO_DIA_MAX: 55.0,
-  UMBRAL_TECHO_NOCHE_MIN: 130.0,
+  UMBRAL_TECHO_DIA_MAX: 100.0,
+  UMBRAL_TECHO_NOCHE_MIN: 45.0,
   TIEMPO_ALERTA_SEGUNDOS: 600, // 10 minutos
   ROIS: {
     ZONA_A: { x1: 335, y1: 95, x2: 382, y2: 175, label: 'Zona A (Pared)' },

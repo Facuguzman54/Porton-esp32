@@ -88,6 +88,15 @@ class ActualizarFuncionalidadesRequest(BaseModel):
     enviar_push: bool | None = None
 
 
+class ConfigurarTemporizadorRequest(BaseModel):
+    tiempo_alerta_segundos: int = Field(
+        ...,
+        ge=15,
+        le=7200,
+        description="Segundos con el portón abierto antes de disparar la alarma (entre 15s y 7200s).",
+    )
+
+
 
 class TelemetriaPayload(BaseModel):
     """

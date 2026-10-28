@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   actualizarFuncionalidadesFamiliaresAdmin,
+  actualizarTemporizadorAlertaAdmin,
   actualizarUsuarioAdmin,
   cambiarMiPassword,
   crearUsuarioAdmin,
@@ -15,10 +16,14 @@ interface AdminUsersModalProps {
   usuarioActual: UsuarioPerfil;
   abierto: boolean;
   tabInicial?: 'usuarios' | 'push' | 'mi-password';
+  tiempoAlertaSegundosActual?: number;
+  onTiempoAlertaActualizado?: (segundos: number) => void;
   onCerrar: () => void;
 }
 
 type TabAdmin = 'usuarios' | 'push' | 'mi-password';
+
+const PRESETS_TEMPORIZADOR_MIN = [1, 3, 5, 10, 15, 30];
 
 const MENSAJES_RAPIDOS_PUSH = [
   '🚪 ¿Alguien puede cerrar el portón?',
@@ -31,11 +36,17 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
   usuarioActual,
   abierto,
   tabInicial,
+  tiempoAlertaSegundosActual = 600,
+  onTiempoAlertaActualizado,
   onCerrar,
 }) => {
   const esAdmin = String(usuarioActual.rol || '').trim().toLowerCase() === 'admin';
   const [tab, setTab] = useState<TabAdmin>(esAdmin ? tabInicial || 'usuarios' : 'push');
   const [actualizandoPermisos, setActualizandoPermisos] = useState<boolean>(false);
+  const [minutosTemporizadorInput, setMinutosTemporizadorInput] = useState<string>(
+    String(Math.max(1, Math.round(tiempoAlertaSegundosActual / 60)))
+  );
+  const [guardandoTemporizador, setGuardandoTemporizador] = useState<boolean>(false);
 
   // Estado de lista de usuarios
   const [usuarios, setUsuarios] = useState<UsuarioPerfil[]>([]);
@@ -95,6 +106,12 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
       setCargandoPushList(false);
     }
   }, []);
+
+  useEffect(() => {
+    setMinutosTemporizadorInput(
+      String(Math.max(1, Math.round(tiempoAlertaSegundosActual / 60)))
+    );
+  }, [tiempoAlertaSegundosActual]);
 
   useEffect(() => {
     if (abierto) {
@@ -236,6 +253,26 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
       setErrorGeneral(
         err instanceof Error ? err.message : 'No se pudo actualizar el permiso del usuario.'
       );
+    }
+  };
+
+  const handleGuardarTemporizadorSegundos = async (segundos: number) => {
+    if (guardandoTemporizador || segundos < 15 || segundos > 7200) return;
+    setGuardandoTemporizador(true);
+    setErrorGeneral(null);
+    try {
+      const res = await actualizarTemporizadorAlertaAdmin(segundos);
+      setMinutosTemporizadorInput(String(Math.max(1, Math.round(res.tiempo_alerta_segundos / 60))));
+      if (onTiempoAlertaActualizado) {
+        onTiempoAlertaActualizado(res.tiempo_alerta_segundos);
+      }
+      mostrarFeedbackExito(res.mensaje);
+    } catch (err) {
+      setErrorGeneral(
+        err instanceof Error ? err.message : 'No se pudo configurar el temporizador.'
+      );
+    } finally {
+      setGuardandoTemporizador(false);
     }
   };
 
@@ -434,6 +471,81 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
 
           {tab === 'usuarios' ? (
             <div className="space-y-3">
+              {/* PANEL DE CONFIGURACIÓN DEL TEMPORIZADOR DE ALARMA */}
+              <div className="rounded-2xl bg-slate-950/80 border border-amber-500/30 p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <i className="fa-solid fa-stopwatch text-amber-400 text-xs" />
+                    <span className="text-xs font-bold text-white">
+                      Temporizador de Alarma (Portón Abierto)
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Actual: {Math.round(tiempoAlertaSegundosActual / 60)} min
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Tiempo que el portón puede permanecer abierto antes de disparar la alerta Push familiar y validar con IA.
+                </p>
+
+                {/* Botones rápidos de minutos */}
+                <div className="grid grid-cols-6 gap-1.5">
+                  {PRESETS_TEMPORIZADOR_MIN.map((min) => {
+                    const segPreset = min * 60;
+                    const seleccionado = tiempoAlertaSegundosActual === segPreset;
+                    return (
+                      <button
+                        key={min}
+                        type="button"
+                        disabled={guardandoTemporizador}
+                        onClick={() => handleGuardarTemporizadorSegundos(segPreset)}
+                        className={`py-1.5 rounded-lg border text-[11px] font-semibold transition cursor-pointer ${
+                          seleccionado
+                            ? 'bg-amber-500/25 border-amber-400 text-amber-200 shadow-xs'
+                            : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300'
+                        }`}
+                      >
+                        {min}m
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Input personalizado en minutos */}
+                <div className="flex items-center gap-2 pt-0.5">
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      value={minutosTemporizadorInput}
+                      onChange={(e) => setMinutosTemporizadorInput(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 focus:border-amber-500 rounded-xl pl-3 pr-14 py-1.5 text-white outline-none text-xs"
+                      placeholder="Minutos..."
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">
+                      minutos
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={
+                      guardandoTemporizador ||
+                      !minutosTemporizadorInput ||
+                      Number(minutosTemporizadorInput) < 1
+                    }
+                    onClick={() =>
+                      handleGuardarTemporizadorSegundos(
+                        Math.round(Number(minutosTemporizadorInput) * 60)
+                      )
+                    }
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:bg-slate-800 text-white font-semibold text-xs transition cursor-pointer shrink-0"
+                  >
+                    {guardandoTemporizador ? 'Guardando...' : 'Aplicar'}
+                  </button>
+                </div>
+              </div>
+
               {/* PANEL DE FUNCIONALIDADES HABILITADAS PARA USUARIOS FAMILIARES */}
               <div className="rounded-2xl bg-slate-950/80 border border-indigo-500/30 p-3.5 space-y-2.5">
                 <div className="flex items-center justify-between">

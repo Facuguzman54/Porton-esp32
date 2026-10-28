@@ -23,6 +23,7 @@ from .schemas import (
     ActualizarFuncionalidadesRequest,
     ActualizarUsuarioRequest,
     CambiarPasswordRequest,
+    ConfigurarTemporizadorRequest,
     ConsultaIaRequest,
     ConsultaIaResponse,
     CrearUsuarioRequest,
@@ -491,6 +492,35 @@ async def eliminar_evento_actividad_admin(
     }
 
 
+@app.patch("/api/configuracion/temporizador")
+async def actualizar_temporizador_alerta_admin(
+    req: ConfigurarTemporizadorRequest,
+    _admin: UsuarioAutenticado = Depends(verificar_admin_autenticado),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, object]:
+    """
+    Permite al administrador configurar el tiempo (en segundos) tras el cual se dispara
+    la alarma de portón abierto. Se persiste en `public.estado_actual` y se propaga por Realtime.
+    """
+    settings.tiempo_alerta_segundos = req.tiempo_alerta_segundos
+    supabase = SupabaseService(settings)
+    prev = await supabase.obtener_estado_actual() or {}
+    actualizado = await supabase.actualizar_estado_actual(
+        {
+            **prev,
+            "tiempo_alerta_segundos": req.tiempo_alerta_segundos,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    etiqueta = formatear_duracion_humana(req.tiempo_alerta_segundos)
+    return {
+        "ok": True,
+        "tiempo_alerta_segundos": req.tiempo_alerta_segundos,
+        "estado_actual": actualizado,
+        "mensaje": f"Temporizador de alarma configurado en {etiqueta}.",
+    }
+
+
 # ---------------------------------------------------------------------------
 # TELEMETRÍA Y CAPTURA DESDE EL NODO EDGE ESP32 (Protegido con `x-api-key`)
 # ---------------------------------------------------------------------------
@@ -643,28 +673,44 @@ async def procesar_telemetria(
         )
 
     # 4. Determinar si hay intención de cambio de estado confirmada por debounce (3/3)
-    estado_final: EstadoPorton = payload.estado
+    diff_val = payload.diff_porton if payload.diff_porton is not None else 0.0
+    estado_reportado: EstadoPorton = payload.estado
+
+    # Normalización de calibración empírica (Día <= 100.0, Noche >= 45.0 + validación cruzada de contraste A/B):
+    # Evita falsos positivos de CAMARA_MOVIDA durante el atardecer/IR incluso si el ESP32 aún no fue reflasheado.
+    if estado_reportado == "CAMARA_MOVIDA":
+        contraste_clavado = (
+            payload.brillo_a > 65.0 and payload.brillo_b < 30.0 and diff_val > 35.0
+        )
+        techo_en_rango = (
+            (payload.brillo_techo <= 100.0)
+            if payload.es_de_dia
+            else (payload.brillo_techo >= 45.0)
+        )
+        if contraste_clavado or techo_en_rango:
+            estado_reportado = "CERRADO" if diff_val > -25.0 else "ABIERTO"
+
+    estado_final: EstadoPorton = estado_reportado
     metodo_confirmacion: MetodoConfirmacion = "ESP32_LOCAL"
     juez_ia_invocado = False
     alerta_disparada = False
     detalle_respuesta = "Pulso procesado localmente."
 
     intenta_cambiar_estado = (
-        payload.lecturas_consecutivas >= 3 and payload.estado != estado_previo
+        payload.lecturas_consecutivas >= 3 and estado_reportado != estado_previo
     )
 
-    diff_val = payload.diff_porton if payload.diff_porton is not None else 0.0
     en_zona_gris = (
         settings.zona_gris_diff_min <= diff_val <= settings.zona_gris_diff_max
     )
 
     # Regla 4.1: Invocar a Gemini si intenta cambiar de estado dentro de la zona gris (-30.0 a -20.0)
-    if intenta_cambiar_estado and payload.estado in ("ABIERTO", "CERRADO") and en_zona_gris:
+    if intenta_cambiar_estado and estado_reportado in ("ABIERTO", "CERRADO") and en_zona_gris:
         if not jpeg_bytes:
             jpeg_bytes = await obtener_captura_memoria_o_storage(supabase)
         veredicto = await gemini.evaluar_como_juez(
             telemetria=payload,
-            motivo=f"Transición {estado_previo} -> {payload.estado} en zona gris (Diff={diff_val:+.1f})",
+            motivo=f"Transición {estado_previo} -> {estado_reportado} en zona gris (Diff={diff_val:+.1f})",
             jpeg_bytes=jpeg_bytes,
         )
         if veredicto:
@@ -680,7 +726,7 @@ async def procesar_telemetria(
             )
 
     # Regla 4.2a: Revalidar visualmente con Gemini antes de disparar alerta crítica de CAMARA_MOVIDA
-    elif intenta_cambiar_estado and payload.estado == "CAMARA_MOVIDA":
+    elif intenta_cambiar_estado and estado_reportado == "CAMARA_MOVIDA":
         if not jpeg_bytes:
             jpeg_bytes = await obtener_captura_memoria_o_storage(supabase)
         veredicto = await gemini.evaluar_como_juez(
@@ -760,7 +806,15 @@ async def procesar_telemetria(
         if not juez_ia_invocado:
             metodo_confirmacion = metodo_previo
 
-    # 6. Regla 3 y 4.2b: Evaluar Temporizador Stateless de 10 minutos (600 segundos)
+    # 6. Regla 3 y 4.2b: Evaluar Temporizador Stateless configurable por Admin (por defecto 600s = 10 min)
+    umbral_alerta_seg = int(
+        prev.get("tiempo_alerta_segundos") or settings.tiempo_alerta_segundos or 600
+    )
+    etiqueta_umbral = (
+        f"{umbral_alerta_seg // 60} min"
+        if umbral_alerta_seg >= 60 and umbral_alerta_seg % 60 == 0
+        else formatear_duracion_humana(umbral_alerta_seg)
+    )
     segundos_abierto = 0
     if estado_final == "ABIERTO":
         if not abierto_desde_str:
@@ -769,13 +823,13 @@ async def procesar_telemetria(
         if abierto_dt:
             segundos_abierto = max(0, int((ahora - abierto_dt).total_seconds()))
 
-        if segundos_abierto >= settings.tiempo_alerta_segundos and not alerta_enviada:
+        if segundos_abierto >= umbral_alerta_seg and not alerta_enviada:
             if not jpeg_bytes:
                 jpeg_bytes = await obtener_captura_memoria_o_storage(supabase)
 
             veredicto_alerta = await gemini.evaluar_como_juez(
                 telemetria=payload,
-                motivo=f"Revalidación previa a alerta crítica: portón lleva {segundos_abierto}s (>10 min) abierto",
+                motivo=f"Revalidación previa a alerta crítica: portón lleva {segundos_abierto}s (>{etiqueta_umbral}) abierto",
                 jpeg_bytes=jpeg_bytes,
             )
 
@@ -789,11 +843,11 @@ async def procesar_telemetria(
                 await supabase.registrar_evento(
                     tipo="VALIDACION_IA",
                     titulo="Falsa Alarma Evitada por Juez IA",
-                    detalle=f"Revalidación a los 10 min detectó portón CERRADO ({veredicto_alerta.justificacion})",
+                    detalle=f"Revalidación a los {etiqueta_umbral} detectó portón CERRADO ({veredicto_alerta.justificacion})",
                     metodo="JUEZ_IA",
                     estado_texto="CERRADO",
                 )
-                detalle_respuesta = "Juez IA corrigió falso positivo antes de enviar alerta de 10 min."
+                detalle_respuesta = f"Juez IA corrigió falso positivo antes de enviar alerta de {etiqueta_umbral}."
             else:
                 if veredicto_alerta:
                     juez_ia_invocado = True
@@ -807,18 +861,18 @@ async def procesar_telemetria(
                 )
                 await supabase.registrar_evento(
                     tipo="ALERTA_TIEMPO",
-                    titulo="Alerta: >10 min Abierto",
+                    titulo=f"Alerta: >{etiqueta_umbral} Abierto",
                     detalle=f"Tiempo límite superado ({formatear_duracion_humana(segundos_abierto)}){justif}",
                     metodo=metodo_confirmacion,
                     duracion_segundos=segundos_abierto,
                     estado_texto="ALERTA_TIEMPO",
                 )
                 await push.enviar_alerta_familiar(
-                    titulo="⚠️ ¡Portón abierto hace más de 10 min!",
+                    titulo=f"⚠️ ¡Portón abierto hace más de {etiqueta_umbral}!",
                     cuerpo=f"El portón corredizo lleva {formatear_duracion_humana(segundos_abierto)} abierto. Revisá la PWA.",
                     tag="porton-10min",
                 )
-                detalle_respuesta = "Alerta >10 min disparada y notificada por Web Push."
+                detalle_respuesta = f"Alerta >{etiqueta_umbral} disparada y notificada por Web Push."
 
     # 7. Si hubo un evento relevante (cambio de estado, Juez IA o alerta), respaldar la imagen de RAM en Supabase Storage
     if cambio_estado or juez_ia_invocado or alerta_disparada:
@@ -841,6 +895,7 @@ async def procesar_telemetria(
             "es_de_dia": payload.es_de_dia,
             "abierto_desde": abierto_desde_str,
             "alerta_enviada": alerta_enviada,
+            "tiempo_alerta_segundos": umbral_alerta_seg,
             "ultima_captura_url": ultima_captura_url,
             "camara_online": True,
             "updated_at": ahora_iso,

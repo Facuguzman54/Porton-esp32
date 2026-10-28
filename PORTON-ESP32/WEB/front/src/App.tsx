@@ -21,6 +21,7 @@ export const App: React.FC = () => {
     avisoReciente,
     cerrarAvisoReciente,
     eliminarEventoLocal,
+    actualizarTiempoAlertaLocal,
   } = usePortonRealtime(Boolean(usuario));
 
   const [modalAdminAbierto, setModalAdminAbierto] = useState<boolean>(false);
@@ -95,7 +96,12 @@ export const App: React.FC = () => {
           <AiAssistant ultimaCapturaIso={estadoActual.updated_at} />
 
           {/* 4. RESUMEN DIARIO Y ESTADÍSTICAS (Visible para admin o usuarios con ver_estadisticas habilitado) */}
-          {puedeVerEstadisticas && <DailyStats estadisticas={estadisticas} />}
+          {puedeVerEstadisticas && (
+            <DailyStats
+              estadisticas={estadisticas}
+              tiempoAlertaSegundos={estadoActual.tiempo_alerta_segundos || 600}
+            />
+          )}
 
           {/* 5. HISTORIAL DE EVENTOS EN TIEMPO REAL (Últimos 7 días + borrado de falsas alarmas para admin) */}
           <EventHistory
@@ -112,6 +118,8 @@ export const App: React.FC = () => {
         <AdminUsersModal
           usuarioActual={usuario}
           abierto={modalAdminAbierto}
+          tiempoAlertaSegundosActual={estadoActual.tiempo_alerta_segundos || 600}
+          onTiempoAlertaActualizado={actualizarTiempoAlertaLocal}
           onCerrar={() => setModalAdminAbierto(false)}
         />
       )}
