@@ -161,9 +161,10 @@ class SupabaseService:
     async def listar_eventos_hoy(self, limite: int = 50) -> list[dict[str, Any]]:
         ahora = datetime.now(timezone.utc)
         inicio_dia = ahora.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=3)
+        inicio_iso = inicio_dia.strftime("%Y-%m-%dT%H:%M:%SZ")
         url = (
             f"{self.rest_url}/eventos_porton"
-            f"?created_at=gte.{inicio_dia.isoformat()}"
+            f"?created_at=gte.{inicio_iso}"
             f"&order=created_at.desc&limit={limite}"
         )
         try:
@@ -342,7 +343,9 @@ class SupabaseService:
     async def limpiar_eventos_antiguos(self, dias: int | None = None) -> int:
         """Elimina eventos con más de 90 días de antigüedad (Regla 5 de AGENTS.md)."""
         retencion = dias or self.settings.retencion_historial_dias
-        limite_iso = (datetime.now(timezone.utc) - timedelta(days=retencion)).isoformat()
+        limite_iso = (datetime.now(timezone.utc) - timedelta(days=retencion)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         url = f"{self.rest_url}/eventos_porton?created_at=lt.{limite_iso}"
         headers = self._headers({"Prefer": "return=representation"})
         try:

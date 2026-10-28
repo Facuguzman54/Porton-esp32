@@ -661,7 +661,7 @@ if _FRONTEND_DIST_DIR:
     if assets_dir.is_dir():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="pwa-assets")
 
-    @app.get("/{full_path:path}", include_in_schema=False)
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def servir_pwa_spa(full_path: str) -> Response:
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Ruta API no encontrada.")
