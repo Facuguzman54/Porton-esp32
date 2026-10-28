@@ -272,7 +272,10 @@ export function getCapturaAutenticadaUrl(
  */
 export async function consultarAsistenteVisual(pregunta: string): Promise<ConsultaIaResponse> {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 20000);
+  const timeoutId = window.setTimeout(
+    () => controller.abort(new Error('Tiempo de espera agotado al consultar la IA (30s).')),
+    30000
+  );
 
   try {
     const response = await fetch(`${API_BASE_URL}/api/consultar-ia`, {
@@ -293,6 +296,11 @@ export async function consultarAsistenteVisual(pregunta: string): Promise<Consul
     }
 
     return (await response.json()) as ConsultaIaResponse;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Tiempo de espera agotado al consultar la IA (30s).');
+    }
+    throw err;
   } finally {
     window.clearTimeout(timeoutId);
   }

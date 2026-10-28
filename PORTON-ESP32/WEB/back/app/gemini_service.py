@@ -21,6 +21,7 @@ class GeminiService:
         self.settings = settings
         self.api_key = settings.gemini_api_key.strip()
         self.model = settings.gemini_model.strip() or "gemini-2.5-flash"
+        self.ultimo_error: str | None = None
 
     async def _invocar_gemini(
         self,
@@ -28,20 +29,29 @@ class GeminiService:
         jpeg_bytes: bytes | None,
         json_mode: bool = False,
     ) -> str | None:
+        self.ultimo_error = None
         if not self.api_key:
-            logger.warning("GEMINI_API_KEY no configurada.")
+            self.ultimo_error = "GEMINI_API_KEY no configurada en el backend."
+            logger.warning(self.ultimo_error)
             return None
 
         parts: list[dict[str, Any]] = [{"text": prompt}]
         if jpeg_bytes:
             parts.append(
                 {
-                    "inline_data": {
-                        "mime_type": "image/jpeg",
+                    "inlineData": {
+                        "mimeType": "image/jpeg",
                         "data": base64.b64encode(jpeg_bytes).decode("ascii"),
                     }
                 }
             )
+            logger.info(
+                "Adjuntando captura JPEG a Gemini (%d bytes / %.1f KB)",
+                len(jpeg_bytes),
+                len(jpeg_bytes) / 1024.0,
+            )
+        else:
+            logger.warning("Invocando a Gemini sin bytes JPEG adjuntos.")
 
         generation_config: dict[str, Any] = {
             "temperature": 0.2,
@@ -62,58 +72,59 @@ class GeminiService:
         # Las claves que comienzan con "AQ." pertenecen a Vertex AI Express Mode (aiplatform.googleapis.com),
         # mientras que las que comienzan con "AIza" pertenecen a Google AI Studio (generativelanguage.googleapis.com).
         es_vertex_key = self.api_key.startswith("AQ.")
-        base_urls = (
-            [
-                "https://aiplatform.googleapis.com/v1/publishers/google/models",
-                "https://generativelanguage.googleapis.com/v1beta/models",
-            ]
+        base_url = (
+            "https://aiplatform.googleapis.com/v1/publishers/google/models"
             if es_vertex_key
-            else [
-                "https://generativelanguage.googleapis.com/v1beta/models",
-                "https://aiplatform.googleapis.com/v1/publishers/google/models",
-            ]
+            else "https://generativelanguage.googleapis.com/v1beta/models"
         )
 
-        for modelo in modelos_a_probar:
-            for base_url in base_urls:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            for modelo in modelos_a_probar:
                 url = f"{base_url}/{modelo}:generateContent"
                 try:
-                    async with httpx.AsyncClient(timeout=15.0) as client:
-                        resp = await client.post(
-                            url,
-                            params={"key": self.api_key},
-                            json=payload,
+                    resp = await client.post(
+                        url,
+                        params={"key": self.api_key},
+                        json=payload,
+                    )
+                    if resp.status_code >= 400:
+                        body_preview = resp.text[:400]
+                        logger.warning(
+                            "Gemini (%s en %s) devolvió HTTP %d: %s",
+                            modelo,
+                            base_url.split("/")[2],
+                            resp.status_code,
+                            body_preview,
                         )
-                        if resp.status_code in (401, 403):
-                            resp = await client.post(
-                                url,
-                                headers={"x-goog-api-key": self.api_key},
-                                json=payload,
+                        if "SERVICE_DISABLED" in body_preview or "aiplatform.googleapis.com" in body_preview and resp.status_code == 403:
+                            self.ultimo_error = (
+                                "La API de Vertex AI (aiplatform.googleapis.com) está deshabilitada en el proyecto "
+                                "de Google Cloud asociado a tu GEMINI_API_KEY (AQ...), o podés usar una clave 'AIza...' de Google AI Studio."
                             )
-                        if resp.status_code >= 400:
-                            logger.warning(
-                                "Gemini (%s en %s) devolvió HTTP %d: %s",
-                                modelo,
-                                base_url.split("/")[2],
-                                resp.status_code,
-                                resp.text[:250],
-                            )
-                            continue
+                            break
+                        if "API_KEY_INVALID" in body_preview or resp.status_code in (401, 403):
+                            self.ultimo_error = f"Google rechazó la GEMINI_API_KEY (HTTP {resp.status_code})."
+                            break
+                        if resp.status_code == 429:
+                            self.ultimo_error = "Cuota gratuita de Gemini temporalmente agotada (HTTP 429)."
+                        continue
 
-                        data = resp.json()
-                        candidates = data.get("candidates") or []
-                        if not candidates:
-                            continue
-                        content_parts = candidates[0].get("content", {}).get("parts") or []
-                        texto = "".join(
-                            p.get("text", "") for p in content_parts if not p.get("thought")
-                        ).strip()
-                        if texto:
-                            return texto
+                    data = resp.json()
+                    candidates = data.get("candidates") or []
+                    if not candidates:
+                        continue
+                    content_parts = candidates[0].get("content", {}).get("parts") or []
+                    texto = "".join(
+                        p.get("text", "") for p in content_parts if not p.get("thought")
+                    ).strip()
+                    if texto:
+                        return texto
                 except Exception as exc:
+                    self.ultimo_error = f"Timeout de red hacia Gemini ({modelo})."
                     logger.warning(
                         "Timeout o error de red consultando Gemini (%s): %s", modelo, exc
                     )
+                    break
 
         return None
 
@@ -187,14 +198,19 @@ class GeminiService:
         if texto:
             return texto.strip().strip('"')
 
-        # Fallback informativo si la API de Gemini da error de cuota o red
+        # Fallback informativo si la API de Gemini da error de cuota, permisos o red
+        img_info = (
+            f"La captura de la cámara sí fue recibida ({len(jpeg_bytes) / 1024.0:.1f} KB)"
+            if jpeg_bytes
+            else "No se encontró captura en caché/bucket"
+        )
+        motivo_api = f" Detalle API: {self.ultimo_error}" if self.ultimo_error else ""
         if estado_contexto:
             est = estado_contexto.get("estado", "CERRADO")
             diff = estado_contexto.get("diff_porton", 0.0)
             techo = estado_contexto.get("brillo_techo", 0.0)
             return (
-                f"Según las lecturas en vivo del nodo ESP32, el portón se encuentra {est} "
-                f"(Diferencial A-B: {diff:+.1f}, Ancla Techo: {techo:.0f}). "
-                "En este momento no se pudo contactar la API de visión en la nube para detallar otros objetos extra."
+                f"{img_info}. Según el nodo ESP32 el portón está {est} "
+                f"(Diferencial A-B: {diff:+.1f}, Ancla Techo: {techo:.0f}).{motivo_api}"
             )
-        return "El sistema registra el portón monitoreado por el ESP32, pero el servicio de visión en la nube no respondió a tiempo."
+        return f"{img_info}, pero el servicio de visión en la nube no pudo procesarla.{motivo_api}"
